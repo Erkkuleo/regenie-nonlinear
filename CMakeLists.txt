@@ -115,11 +115,55 @@ add_executable(regenie
   ${CMAKE_SOURCE_DIR}/src/cox_ridge.cpp
   ${CMAKE_SOURCE_DIR}/src/cox_score.cpp
   ${CMAKE_SOURCE_DIR}/src/cox_firth.cpp
+  ${CMAKE_SOURCE_DIR}/src/Nonlinear.cpp
   )
 target_include_directories(regenie PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
+find_package(ZLIB REQUIRED)
+target_include_directories(regenie PRIVATE ${ZLIB_INCLUDE_DIRS})
+
+# ZSTD
+find_library(ZSTD_LIBRARY zstd REQUIRED)
+find_path(ZSTD_INCLUDE_DIR zstd.h REQUIRED)
+target_include_directories(regenie PRIVATE ${ZSTD_INCLUDE_DIR})
+
+# External libs
+set(EXTERN_LIBS_PATH "${CMAKE_SOURCE_DIR}/external_libs")
+target_include_directories(regenie PRIVATE ${EXTERN_LIBS_PATH}/)
+
+# BGEN + dependencies
+find_library(BGEN_LIBRARY libbgen.a HINTS "${BGEN_PATH}/build" REQUIRED)
+find_library(DB_LIBRARY libdb.a HINTS "${BGEN_PATH}/build/db" REQUIRED)
+find_library(SQLITE3_LIBRARY libsqlite3.a HINTS "${BGEN_PATH}/build/3rd_party/sqlite3" REQUIRED)
+find_library(Boost_LIBRARY libboost.a HINTS "${BGEN_PATH}/build/3rd_party/boost_1_55_0" REQUIRED)
+
+# Include directories for BGEN and others
+target_include_directories(regenie PRIVATE
+    ${BGEN_PATH}
+    ${BGEN_PATH}/genfile/include/
+    ${BGEN_PATH}/3rd_party/boost_1_55_0/
+    ${BGEN_PATH}/3rd_party/zstd-1.1.0/lib
+    ${BGEN_PATH}/db/include/
+    ${BGEN_PATH}/3rd_party/sqlite3
+)
+
+# Link libraries in the **correct order**
+target_link_libraries(regenie PRIVATE
+    ${BGEN_LIBRARY}   # depends on ZSTD
+    ${ZSTD_LIBRARY}   # must come after BGEN
+    ${ZLIB_LIBRARIES} # zlib
+    ${DB_LIBRARY}
+    ${SQLITE3_LIBRARY}
+    ${Boost_LIBRARY}
+)
+
+# Compiler flags
 set(CMAKE_CXX_FLAGS "-O3 -Wall -pedantic -ffast-math -Wno-unused-local-typedefs -Wno-deprecated-declarations -Wno-long-long -Wno-c11-extensions -fPIC")
 add_definitions(-DVERSION_NUMBER="${RG_VERSION}")
+
+
+#set(CMAKE_CXX_FLAGS "-O3 -Wall -pedantic -ffast-math -Wno-unused-local-typedefs -Wno-deprecated-declarations -Wno-long-long -Wno-c11-extensions -fPIC")
+#add_definitions(-DVERSION_NUMBER="${RG_VERSION}")
 
 if("${UNAME_S}" STREQUAL "Linux")
   find_package(OpenMP REQUIRED)
@@ -135,13 +179,14 @@ set(EXTERN_LIBS_PATH "${CMAKE_SOURCE_DIR}/external_libs")
 target_include_directories(regenie PRIVATE ${EXTERN_LIBS_PATH}/)
 
 # BGEN library and its dependencies
-find_library(ZSTD_LIBRARY libzstd.a HINTS "${BGEN_PATH}/build/3rd_party/zstd-1.1.0" REQUIRED)
-find_library(DB_LIBRARY libdb.a HINTS "${BGEN_PATH}/build/db" REQUIRED)
-find_library(SQLITE3_LIBRARY libsqlite3.a HINTS "${BGEN_PATH}/build/3rd_party/sqlite3" REQUIRED)
-find_library(Boost_LIBRARY libboost.a HINTS "${BGEN_PATH}/build/3rd_party/boost_1_55_0" REQUIRED)
-find_library(BGEN_LIBRARY libbgen.a HINTS "${BGEN_PATH}/build" REQUIRED)
-target_link_libraries(regenie PRIVATE ${ZSTD_LIBRARY} ${BGEN_LIBRARY} ${DB_LIBRARY} ${SQLITE3_LIBRARY} ${Boost_LIBRARY})
-target_include_directories(regenie PRIVATE ${BGEN_PATH} ${BGEN_PATH}/genfile/include/ ${BGEN_PATH}/3rd_party/boost_1_55_0/ ${BGEN_PATH}/3rd_party/zstd-1.1.0/lib ${BGEN_PATH}/db/include/ ${BGEN_PATH}/3rd_party/sqlite3)
+#find_library(ZLIB_LIBRARY z HINTS /usr/lib /usr/lib/x86_64-linux-gnu REQUIRED)
+#find_path(ZLIB_INCLUDE_DIR zlib.h HINTS /usr/include REQUIRED)
+#find_library(DB_LIBRARY libdb.a HINTS "${BGEN_PATH}/build/db" REQUIRED)
+#find_library(SQLITE3_LIBRARY libsqlite3.a HINTS "${BGEN_PATH}/build/3rd_party/sqlite3" REQUIRED)
+#find_library(Boost_LIBRARY libboost.a HINTS "${BGEN_PATH}/build/3rd_party/boost_1_55_0" REQUIRED)
+#find_library(BGEN_LIBRARY libbgen.a HINTS "${BGEN_PATH}/build" REQUIRED)
+#target_link_libraries(regenie PRIVATE ${ZSTD_LIBRARY} ${BGEN_LIBRARY} ${DB_LIBRARY} ${SQLITE3_LIBRARY} ${Boost_LIBRARY})
+#target_include_directories(regenie PRIVATE ${BGEN_PATH} ${BGEN_PATH}/genfile/include/ ${BGEN_PATH}/3rd_party/boost_1_55_0/ ${BGEN_PATH}/3rd_party/zstd-1.1.0/lib ${BGEN_PATH}/db/include/ ${BGEN_PATH}/3rd_party/sqlite3)
 
 # MVTNorm library
 set(MVTN_PATH "${EXTERN_LIBS_PATH}/mvtnorm")

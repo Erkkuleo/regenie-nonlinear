@@ -55,6 +55,10 @@
 #include "Interaction.hpp"
 #include "Masks.hpp"
 #include "Data.hpp"
+#include "fourier.hpp"
+
+#include "Nonlinear.hpp"
+
 
 #ifdef WITH_HTSLIB
 #include "remeta/regenie_ld_matrix_writer.hpp"
@@ -86,6 +90,12 @@ void Data::run() {
 
   if(params.test_mode){  // step 2
     run_step2();
+
+    if (params.nonlinear) {
+      sout << calculateNonlinear(params.nonlinear_function, params.nonlinear_test, params.nonlinear_period, params.nonlinear_offset, params.nonlinear_in_degrees) << "\n";
+      sout << "erkka was here!!\n";
+    }
+
   } else {  // step 1
     run_step1();
   }

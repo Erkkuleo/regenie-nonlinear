@@ -146,7 +146,11 @@ struct findID {
   bool is_found;
 };
 
+#include "Regenie.hpp"
 
+using Eigen::MatrixXd;
+using Eigen::Ref;
+using std::string;
 
 void check_bgen(const std::string&,std::string const&,bool&,bool&,uint&,int const&);
 void prep_bgen(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,BgenParser&,mstream&);
@@ -276,5 +280,8 @@ uint32_t read_bim(std::map<std::string,std::vector<uint64>>&,geno_file_info*,mst
 uint32_t read_fam(struct ext_geno_info&,geno_file_info*,Eigen::Ref<ArrayXb>,struct param*,mstream&);
 void prep_bed(uint32_t&,struct ext_geno_info&,struct in_files const*);
 void read_snps_bed(bool const&,std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct ext_geno_info&,Eigen::Ref<ArrayXb>,std::string const&,struct param*,mstream&);
+
+void code_nonlinear(MatrixXd& Gcov,Ref<ArrayXb> mask,const string& nonlinear_type,double period,double offset,struct param* params,mstream& sout);
+
 
 #endif

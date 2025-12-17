@@ -42,6 +42,8 @@
 #include "Masks.hpp"
 #include "HLM.hpp"
 #include "Data.hpp"
+#include "cstdint"
+
 
 #include <boost/exception/all.hpp>
 #include <boost/math/special_functions/gamma.hpp>
@@ -251,7 +253,13 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("strict-check-burden", "to exit early if the annotation, set list and mask definition files don't agree")
     ("force-qt", "force QT run for traits with few unique values")
     ("par-region", "build code to identify PAR region boundaries on chrX", cxxopts::value<std::string>(params->build_code),"STRING(=hg38)")
-    ;
+    ("nonlinear", "specify nonlinear processing mode or covariate (BOOLEAN)", cxxopts::value<bool>(params->nonlinear), "BOOLEAN")
+    ("nonlinear-test", "testing values", cxxopts::value<double>(params->nonlinear_test), "FLOAT(=1.0)")
+    ("nonlinear-period", "scale factor applied before nonlinear transform (FLOAT)", cxxopts::value<double>(params->nonlinear_period), "FLOAT(=1.0)")
+    ("nonlinear-function", "nonlinear function to apply (e.g. spline,cubic, cos) (STRING)", cxxopts::value<std::string>(params->nonlinear_function), "STRING")
+    ("nonlinear-offset", "include an offset term for the nonlinear model", cxxopts::value<double>(params->nonlinear_offset), "FLOAT(=0.0)")
+    ("degree", "gives result in degrees instead of radians", cxxopts::value<bool>(params->nonlinear_in_degrees), "BOOLEAN")
+;
 
 
   // extended options
@@ -300,7 +308,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("skip-scaleG", "compute LD matrix based on unscaled genotypes")
     ("sparse-thr", "threshold used to sparsify the LD matrix", cxxopts::value<double>(params->ld_sparse_thr),"FLOAT(=0)")
     ("print-vcov", "print variance-covariance matrix for interaction test to file")
-    ;
+    ("fourier-transform-p", "Apply fourier transformation to P-Values", cxxopts::value(params->do_fourier_p))
+    ; 
 
   // extra options
   AllOptions.add_options("Extra")
@@ -1379,6 +1388,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       }
     }
     if(vm.count("lovo-snplist")) check_file(params->masks_loo_snpfile, "lovo-snplist");
+
+    if(vm.count("fourier-transform-p")) {
+      params ->do_fourier_p = vm["fourier-transform-p"].as<bool>();
+    }
 
     if(vm.count("remeta-save-ld") > 0) {
   #ifndef WITH_HTSLIB

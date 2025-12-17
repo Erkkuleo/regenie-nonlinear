@@ -40,6 +40,8 @@
 #include "Masks.hpp"
 #include "Data.hpp"
 #include "MCC.hpp"
+#include "Nonlinear.hpp"
+
 
 using namespace std;
 using namespace Eigen;
@@ -2374,7 +2376,6 @@ std::string print_header_output_all(struct param const* params){
     buffer << " BETA.Y" << i+1 << " SE.Y" << i+1 << " CHISQ.Y" << i+1 << " LOG10P.Y" << i+1;
   // end of line
   buffer << " EXTRA\n";
-
   return buffer.str();
 }
 
@@ -2387,8 +2388,7 @@ std::string print_header_output_single(struct param const* params){
     ( !params->build_mask && params->dosage_mode ? "INFO ":"") << 
     "N " <<
     ( params->af_cc ? "N_CASES N_CONTROLS ":"") <<
-    "TEST BETA SE CHISQ LOG10P EXTRA\n";
-
+    "TEST BETA SE CHISQ LOG10P NONLINEAR EXTRA\n";
   return buffer.str();
 }
 
@@ -2479,6 +2479,7 @@ std::string print_sum_stats_all(const double& af, const double& af_case, const d
   if(print_pv) buffer << ' ' << chisq << ' ' << pv;
   else buffer << " NA NA";
 
+
   // extra column
   if(ipheno == params->n_pheno) {
     if(params->joint_test && (df<0)) buffer << " DF=NA\n";
@@ -2499,6 +2500,7 @@ std::string print_sum_stats_single(const double& af, const double& af_case, cons
   std::ostringstream buffer;
   bool print_afs = (af >= 0), print_info = (info >= 0), print_se = (se >= 0) && !is_nan(se);
   bool print_pv = (chisq>=0) && test_pass && !is_nan(pv);
+  bool print_linear = true;
 
   // AF N INFO TEST
   if(print_afs) buffer << af << " " ;
@@ -2521,7 +2523,12 @@ std::string print_sum_stats_single(const double& af, const double& af_case, cons
 
   // CHISQ PV
   if(print_pv) buffer << ' ' << chisq << ' ' << pv;
-  else buffer << " NA NA";
+  else buffer << " NA NA ";
+  
+  if(print_linear)  {
+    double linear_val = calculateNonlinear(params->nonlinear_function, std::pow(10.0, pv), params->nonlinear_period, params->nonlinear_offset, params->nonlinear_in_degrees);
+    buffer << " " << linear_val;
+  } else buffer << "NA NA";
 
   // extra column
   vector<string> extraCol;
@@ -2534,7 +2541,7 @@ std::string print_sum_stats_single(const double& af, const double& af_case, cons
 }
 
 
-std::string print_sum_stats_htp(const double& beta, const double& se, const double& chisq, const double& lpv, const double& af, const double& info, const double& mac, const Ref<const MatrixXi>& genocounts, const int& ph, const bool& test_pass, const int& df, struct param const* params, const double& score, const double& cal_factor, const double& cal_factor_burden, const double& skat_var) {
+std::string print_sum_stats_htp(const double& beta, const double& se, const double& chisq, const double& lpv, const double& af, const double& info, const double& mac, const Ref<const MatrixXi>& genocounts, const int& ph, const bool& test_pass, const int& df, struct param const* params, const double& score, const double& cal_factor, const double& cal_factor_burden, const double& skat_var, const double& nonlinear_val) {
 
   std::ostringstream buffer;
   string outp_val = "-1";
@@ -2628,6 +2635,10 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   if(params->joint_test) infoCol.push_back("DF=" + to_string(df));
   // log10P
   infoCol.push_back( "LOG10P=" + (print_pv ? convert_double_to_str(lpv) : "NA") );
+  // 
+  infoCol.push_back("NONLINEAR=" + convert_double_to_str(nonlinear_val));
+  infoCol.push_back("TRANS_INTERACT=" + convert_double_to_str(nonlinear_val));
+
   // indicator for no beta printed (joint or vc tests)
   if(se<0) infoCol.push_back( "NO_BETA" );
   // print info column

@@ -28,6 +28,7 @@
 #include "Files.hpp"
 #include "Geno.hpp"
 #include "db/sqlite3.hpp"
+#include "Nonlinear.hpp"
 
 using namespace std;
 using namespace Eigen;
@@ -4146,7 +4147,6 @@ void code_snp(MatrixXd& Gcov, Ref<ArrayXb> mask, uint64 const& offset, struct fi
   } else throw "unrecognized coding for GxG variant (can be either add/dom/rec/cat/add-homdev).";
 
 }
-
 
 void get_conditional_vars(map<string, uint64>& snps, struct in_files* files, struct param const* params, mstream& sout) {
 

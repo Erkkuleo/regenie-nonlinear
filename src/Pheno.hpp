@@ -94,6 +94,7 @@ void rint_pheno(Eigen::Ref<Eigen::MatrixXd>,const Eigen::Ref<const ArrayXb>&);
 bool cmp_rank_pair(struct rank_pair&,struct rank_pair&);
 void compute_skew(struct phenodt*,struct param const*);
 double skew_pheno(const Eigen::Ref<const Eigen::ArrayXd> & , const Eigen::Ref<const ArrayXb> & );
+void extract_interaction_nonlinear(param* params,filter* filters,phenodt* pheno_data,Eigen::Ref<Eigen::Array<bool, -1, 1>> ind_in_cov_and_geno,mstream& sout);
 
 #endif
 

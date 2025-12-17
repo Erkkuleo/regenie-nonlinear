@@ -44,6 +44,8 @@
 #include <thread>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <string>
+
 
 // if using external LAPACK routines
 #ifdef WITH_OPENBLAS
@@ -434,6 +436,15 @@ struct param {
   std::string ld_list_file = "";
   std::vector<uint32_t> ld_sv_offsets;
   std::map<std::string, uint32_t> extract_vars_order;//order of variants
+  
+  //fourier-transformation to p-values
+  bool do_fourier_p = false;  
+  bool nonlinear = false;
+  double nonlinear_test = 0.0;
+  double nonlinear_period = 0.0;
+  std::string nonlinear_function = "cos";
+  double nonlinear_offset = 0.0;
+  bool nonlinear_in_degrees = false;
 };
 
 struct geno_file_info {

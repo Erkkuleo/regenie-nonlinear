@@ -911,7 +911,7 @@ std::string JTests::print_sum_stats(const string& tname, const int& ipheno, cons
     if(params->split_by_pheno && (plog != -9))  buffer << "DF=" << df_test << endl;
     else buffer << "DF=NA\n";
   }
-
+  buffer << 123.456 << " ";
   reset_vals();
   return buffer.str();
 }
@@ -954,6 +954,12 @@ std::string JTests::print_sum_stats_htp(const string& tname, const int& chrom, c
   // log10P
   if(test_pass) buffer << ";LOG10P=" << plog;
   else buffer << ";LOG10P=NA";
+
+  buffer << 123.456 << " ";
+
+
+  if(test_pass) buffer << ";NONLINEAR=" << pval;
+  else buffer << ";NONLINEAR=NA";
 
   buffer << ";NO_BETA\n";
 
@@ -1003,6 +1009,17 @@ std::string JTests::print_sum_stats_gene(const string& mname, const string& max_
   // pval
   if( (plog != -9) && !is_nan(plog) )  buffer << plog << " ";
   else buffer << "NA ";
+
+  //linear
+  buffer << 123.456 << " ";
+  /*
+  if ((plog != -9) && !is_nan(plog)) {
+    //double nonlinear_val = calculateNonlinear(plog, 1.0, 0.0); // or whatever args you use
+    buffer << nonlinear_val "NONLINEAR" << " ";
+  } else {
+      buffer << "NA ";
+  }*/ 
+  
 
   //df (print it out only if split by pheno)
   if(params->split_by_pheno || (ipheno == params->n_pheno)) {
@@ -1060,6 +1077,13 @@ std::string JTests::print_sum_stats_htp_gene(const string& mname, const string& 
   // log10P
   if(test_pass) buffer << ";LOG10P=" << plog;
   else buffer << ";LOG10P=NA";
+
+  if(test_pass) buffer << ";NONLINEAR=" << pval;
+  else buffer << ";NONLINEAR=NA";
+
+  buffer << 123.456 << " ";
+
+
   buffer << ";NO_BETA\n";
 
   reset_vals();

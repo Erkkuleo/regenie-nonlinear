@@ -40,6 +40,7 @@
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "Pheno.hpp"
+#include "Nonlinear.hpp"
 
 using namespace std;
 using namespace Eigen;
@@ -84,7 +85,10 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   if(params->condition_snps)
       extract_condition_snps(params, files, filters, pheno_data, gblock, ind_in_cov_and_geno, sout);
   if(params->w_interaction){
-    if(params->interaction_snp) // if doing GxG interaction
+    if(params->nonlinear) {
+      std::cout << pheno_data->interaction_cov <<"\n";
+      extract_interaction_nonlinear(params, filters, pheno_data, ind_in_cov_and_geno, sout);
+    } else if(params->interaction_snp) // if doing GxG interaction
       extract_interaction_snp(params, files, filters, pheno_data, gblock, ind_in_cov_and_geno, sout);
     else if(params->interaction_prs) // if doing GxPRS interaction
       extract_interaction_prs(params, files, filters, pheno_data, ind_in_cov_and_geno, sout);
@@ -922,6 +926,27 @@ void check_nvals(int const& i_pheno, string const& pheno, struct param const* pa
   throw "phenotype '" + pheno + "' has very few unique values (=" + to_string(uniq_vals.size()) + "). If you really want to analyze it as a QT, use `--force-qt`.";
 
 }
+void extract_interaction_nonlinear(param* params,
+                                   filter* filters,
+                                   phenodt* pheno_data,
+                                   Eigen::Ref<Eigen::Array<bool, -1, 1>> ind_in_cov_and_geno,
+                                   mstream& sout) {
+
+    // Example: apply nonlinear transformation to the covariate table
+    // assuming pheno_data->interaction_cov is already sized correctly
+
+    for (uint32_t i = 0; i < params->n_samples; i++) {
+      pheno_data->interaction_cov(i, 0) = calculateNonlinear(
+          params->nonlinear_function,  // now a string
+          pheno_data->interaction_cov(i, 0),  // the value
+          params->nonlinear_period,
+          params->nonlinear_offset,
+          params->nonlinear_in_degrees
+      );
+    }
+    std::cout << "interaction_cov cosinor:\n"
+          << pheno_data->interaction_cov.topRows(5) << std::endl;
+}
 
 
 void extract_interaction_snp(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, struct geno_block* gblock, Ref<ArrayXb> ind_in_cov_and_geno, mstream& sout) {
@@ -929,7 +954,6 @@ void extract_interaction_snp(struct param* params, struct in_files* files, struc
   bool mean_impute = false;
   pheno_data->interaction_cov.resize(params->n_samples, 1);
   MapArXd Gcov (pheno_data->interaction_cov.col(0).data(), params->n_samples, 1);
-
   // read snp
   if(params->interaction_file) {// from external file
     extract_from_genofile("interaction", Gcov.matrix(), mean_impute, ind_in_cov_and_geno, filters, files, params, sout);
