@@ -15,3 +15,8 @@ external_libs/pgenlib/include/*.o
 # Files
 README.md
 LICENSE
+
+build
+build/*
+.git
+.gitignore

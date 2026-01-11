@@ -55,10 +55,8 @@
 #include "Interaction.hpp"
 #include "Masks.hpp"
 #include "Data.hpp"
-#include "fourier.hpp"
 
 #include "Nonlinear.hpp"
-
 
 #ifdef WITH_HTSLIB
 #include "remeta/regenie_ld_matrix_writer.hpp"

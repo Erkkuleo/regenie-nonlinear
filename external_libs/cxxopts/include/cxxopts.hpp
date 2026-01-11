@@ -55,7 +55,6 @@ THE SOFTWARE.
 #ifdef __has_include
 #  if __has_include(<optional>)
 #    include <optional>
-#    include <cstdint>
 #    ifdef __cpp_lib_optional
 #      define CXXOPTS_HAS_OPTIONAL
 #    endif

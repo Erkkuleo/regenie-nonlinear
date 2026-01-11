@@ -3,3 +3,4 @@ external_libs/pgenlib/*.o
 external_libs/pgenlib/include/*.o
 docs/nature.csl
 build/
+notes
