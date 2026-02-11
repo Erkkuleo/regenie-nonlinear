@@ -79,7 +79,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
 
     // starting values
     betaold = 0;
-    if(params->print_cov_betas) {betaold(0) = (0.5 + Y.sum()) / (pheno_data->Neff(i) + 1); betaold(0) = log( betaold(0) / (1 - betaold(0))) - loco_offset.mean();}
+    if(params->print_cov_betas) {betaold(0) = (0.5 + mask.select(Y,0).sum()) / (pheno_data->Neff(i) + 1); betaold(0) = log( betaold(0) / (1 - betaold(0))) - loco_offset.mean();}
     get_pvec(etavec, pivec, betaold, loco_offset, pheno_data->new_cov, params->numtol_eps);
 
     // check if model converged
@@ -94,7 +94,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
         etavec = mask.select( log(pivec/ (1-pivec)), 0);
         betaold = 0;
         if(params->print_cov_betas) {
-          betaold(0) = (0.5 + Y.sum()) / (pheno_data->Neff(i) + 1); betaold(0) = log( betaold(0) / (1 - betaold(0)));
+          betaold(0) = (0.5 + mask.select(Y,0).sum()) / (pheno_data->Neff(i) + 1); betaold(0) = log( betaold(0) / (1 - betaold(0)));
           get_pvec(etavec, pivec, betaold, loco_dummy, pheno_data->new_cov, params->numtol_eps);
         }
         if( fit_logistic(Y, pheno_data->new_cov, loco_dummy, mask, pivec, etavec, betaold, params, sout, true, params->numtol) || fit_logistic(Y, pheno_data->new_cov, loco_dummy, mask, pivec, etavec, betaold, params, sout, false, params->numtol) ){ 
@@ -155,6 +155,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
 
 bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, struct param const* params, mstream& sout, bool const& check_hs_dev, double const& numtol) {
 
+  bool small_score_reached = false;
   int niter_cur = 0, niter_search;
   double dev_old, dev_new=0, diff_dev;
   ArrayXd score, betanew, wvec, zvec;
@@ -198,9 +199,12 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
     // stopping criterion
     score = X1.transpose() * mask.select(Y1 - pivec, 0).matrix();
     if( score.abs().maxCoeff() < numtol ) break; // prefer for score to be below tol
+    // check for failed convergence early on
+    if(!small_score_reached && (niter_cur < 20) && (score.abs().maxCoeff() < 1)) small_score_reached = true;
+    if(small_score_reached && (niter_cur > 20) && (score.abs().maxCoeff() > 5)) return false; // score should get closer to 0 after this many iters
 
     diff_dev = abs(dev_new - dev_old)/(0.1 + abs(dev_new));
-    if(params->debug) cerr << "#" << niter_cur << ": score_max=" << score.abs().maxCoeff() << ";dev_diff=" << setprecision(16) << diff_dev << "\n";
+    if(params->debug) cerr << "#" << niter_cur << ": score_max=" << score.abs().maxCoeff() << ";dev_diff=" << setprecision(16) << diff_dev << "; beta.head=" << betanew.head(5).matrix().transpose() << "\n";
 
     betavec = betanew;
     dev_old = dev_new;

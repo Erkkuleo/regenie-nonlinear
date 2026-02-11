@@ -3911,8 +3911,10 @@ void Data::compute_ld_dosages(Files* ofile){
   MatrixXd Gmask_X;
   if(params.build_mask) {
     get_G_masks(Gmask, ld_var_absent, colnames_ld_mat);
-    // project covariates
-    Gmask_X = Gmask.transpose() * pheno_data.new_cov; // MxK
+    if(Gmask.cols() > 0){
+      // project covariates
+      Gmask_X = Gmask.transpose() * pheno_data.new_cov; // MxK
+    }
   }
 
   // to set columns of LD mat in right order 
@@ -4014,6 +4016,11 @@ void Data::get_G_masks(SpMat& Gmat, ArrayXb& is_absent, map<string, int>& colnam
       bs = set_info->snp_indices.size();
 
       sout << " set [" << block + 1 << "/" << params.total_n_block << "] : " << set_info->ID << " - " << bs << " variants..." << flush;
+      if(bs == 0){
+        sout << "skipped\n";
+        block++;
+        continue;
+      }
 
       // build the masks
       block_info.resize(bs);
@@ -4038,7 +4045,7 @@ void Data::get_G_masks(SpMat& Gmat, ArrayXb& is_absent, map<string, int>& colnam
 
   }
 
-  Gmat = burden_mat.sparseView();
+  if(burden_mat.cols() > 0) Gmat = burden_mat.sparseView();
 
   if(params.debug) cout << print_mem() << "...";
   sout << " -> " << mt.stop_ms() << "\n\n";
@@ -4332,6 +4339,11 @@ void Data::get_G_masks_hc(SpMat& Gmat, ArrayXb& is_absent, map<string, int>& col
       bs = set_info->snp_indices.size();
 
       sout << " set [" << block + 1 << "/" << params.total_n_block << "] : " << set_info->ID << " - " << bs << " variants..." << flush;
+      if(bs == 0){
+        sout << "skipped\n";
+        block++;
+        continue;
+      }
 
       // build the masks
       block_info.resize(bs);

@@ -1098,8 +1098,6 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
     pheno_data->new_cov.rightCols(pheno_data->interaction_cov.cols()) = pheno_data->interaction_cov.array().square().matrix();
   }
 
-  // orthonormal basis (save number of lin. indep. covars.)
-  if(params->print_cov_betas && params->trait_mode) pheno_data->new_cov_raw = pheno_data->new_cov;
   if (params->trait_mode == 3) {
     // check constant covariates
     // std::cout << "new_cov: " << pheno_data->new_cov.block(0,0,5,pheno_data->new_cov.cols());
@@ -1112,17 +1110,26 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
       }
     }
 
-    params->ncov = nonConstantColumns.size();
-    Eigen::ArrayXd filtered_cov_sds(params->ncov);
-    Eigen::MatrixXd new_cov_mtx(pheno_data->new_cov.rows(), params->ncov);
-    for (int i = 0; i < params->ncov; ++i) {
-        new_cov_mtx.col(i) = pheno_data->new_cov.col(nonConstantColumns[i]);
-        filtered_cov_sds(i) = params->cov_sds(nonConstantColumns[i]);
+    if(nonConstantColumns.size() != (size_t)pheno_data->new_cov.cols()) {
+      params->ncov = nonConstantColumns.size();
+      Eigen::ArrayXd filtered_cov_sds(params->ncov);
+      Eigen::MatrixXd new_cov_mtx(pheno_data->new_cov.rows(), params->ncov);
+      vector<string> filtered_cov_names(params->ncov);
+      for (int i = 0; i < params->ncov; ++i) {
+          new_cov_mtx.col(i) = pheno_data->new_cov.col(nonConstantColumns[i]);
+          filtered_cov_sds(i) = params->cov_sds(nonConstantColumns[i]);
+          if(params->print_cov_betas) filtered_cov_names[i] = params->covar_names[nonConstantColumns[i]];
+      }
+      pheno_data->new_cov = std::move(new_cov_mtx);
+      params->cov_sds = filtered_cov_sds;
+      if(params->print_cov_betas) params->covar_names = filtered_cov_names;
+      // std::cout << "new_cov after filter: " << pheno_data->new_cov.block(0,0,5,pheno_data->new_cov.cols());
     }
-    pheno_data->new_cov = std::move(new_cov_mtx);
-    params->cov_sds = filtered_cov_sds;
-    // std::cout << "new_cov after filter: " << pheno_data->new_cov.block(0,0,5,pheno_data->new_cov.cols());
   }
+
+  // orthonormal basis (save number of lin. indep. covars.)
+  if(params->print_cov_betas && params->trait_mode) pheno_data->new_cov_raw = pheno_data->new_cov;
+
   if (pheno_data->new_cov.cols() > 0) {
     params->ncov = (params->print_cov_betas ? scale_mat(pheno_data->new_cov, filters->ind_in_analysis, params) : getBasis(pheno_data->new_cov, params));
     // params->ncov = pheno_data->new_cov.cols();
@@ -1602,6 +1609,12 @@ void fit_null_models_nonQT(struct param* params, struct phenodt* pheno_data, str
     // need to get betas for non-QTs in step 2
     if(params->trait_mode==1) { // BT
       fit_null_logistic(true, 0, params, pheno_data, m_ests, files, sout, true);// null logistic
+      // if it fails, try a less stringent convergence criterion
+      if(params->n_pheno == 1 && !params->pheno_pass(0)){
+        params->numtol = 2 * params->numtol_firth; params->pheno_pass(0) = true;
+        fit_null_logistic(true, 0, params, pheno_data, m_ests, files, sout, true);// null logistic
+        params->numtol = 1e-6;
+      }
       if(params->firth) // null firth
         for( int ph = 0; ph < params->n_pheno; ++ph ) 
           if(params->pheno_pass(ph))
@@ -1726,16 +1739,23 @@ int scale_mat(MatrixXd& X, const Eigen::Ref<const ArrayXb>& ind_in_analysis, str
   params->cov_sds = (X(index_in_analysis, all).rowwise() - mu).colwise().norm().array() / sqrt(params->n_analyzed - 1);
 
   // SD=0 should be only for intercept column (set it to 1)
-  if((params->cov_sds < params->eigen_val_rel_tol).count() > 1){
-    if(params->debug) {
-      cerr << "cov_names: " << print_sv(params->covar_names,"\t") << "\n";
-      cerr << "X top 2 rows:\n" << X.topRows(2) << "\n";
-      cerr << "SDs:\n" << params->cov_sds.matrix().transpose() << "\n";
-      cerr << "eig. tol: " << params->eigen_val_rel_tol << "\n";
+  // get indices where SD < tol
+  ArrayXb zero_sd = (params->cov_sds < params->eigen_val_rel_tol);
+  ArrayXi zero_sd_indices = get_true_indices(zero_sd);
+  for (auto const& index: zero_sd_indices) {
+    if( params->covar_names[index] == "Intercept"){
+      params->cov_sds(index) = 1;
+      continue;
+    } else {
+      if(params->debug) {
+        cerr << "cov_names: " << print_sv(params->covar_names,"\t") << "\n";
+        cerr << "X top 2 rows:\n" << X.topRows(2) << "\n";
+        cerr << "SDs:\n" << params->cov_sds.matrix().transpose() << "\n";
+        cerr << "eig. tol: " << params->eigen_val_rel_tol << "\n";
+      }
+      throw "SD=0 found for covariate '" + params->covar_names[index] + "'; please remove this covariate and re-run.";
     }
-    throw "more than 1 covariates have SD = 0";
   }
-  params->cov_sds = (params->cov_sds < params->eigen_val_rel_tol).select(1, params->cov_sds);
 
   // re-scale X (better for logistic reg convergence)
   X.array().rowwise() /= params->cov_sds.matrix().transpose().array();
