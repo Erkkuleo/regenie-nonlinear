@@ -425,7 +425,6 @@ void tpheno_read(struct param* params, struct in_files* files, struct filter* fi
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() != ncols_file )
       throw "incorrectly formatted phenotype file.";
-
     // check trait name
     yname = tmp_str_vec[ filters->tpheno_indexCol - 1 ]; 
     if(params->select_phenos_rm && in_map(yname, filters->pheno_colRm_names)) continue;

@@ -42,6 +42,7 @@
 #include "Masks.hpp"
 #include "HLM.hpp"
 #include "Data.hpp"
+#include "Timestamp.hpp"
 #include "cstdint"
 
 
@@ -253,7 +254,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("strict-check-burden", "to exit early if the annotation, set list and mask definition files don't agree")
     ("force-qt", "force QT run for traits with few unique values")
     ("par-region", "build code to identify PAR region boundaries on chrX", cxxopts::value<std::string>(params->build_code),"STRING(=hg38)")
-    ("nonlinear", "specify nonlinear processing mode or covariate (BOOLEAN)", cxxopts::value<bool>(params->nonlinear), "BOOLEAN")
+    ("nonlinear", "use nonlinear calculations", cxxopts::value<bool>(params->nonlinear), "BOOLEAN")
     ("nonlinear-test", "testing values", cxxopts::value<double>(params->nonlinear_test), "FLOAT(=1.0)")
     ("nonlinear-period", "scale factor applied before nonlinear transform (FLOAT)", cxxopts::value<double>(params->nonlinear_period), "FLOAT(=1.0)")
     ("nonlinear-function", "nonlinear function to apply (e.g. spline,cubic, cos) (STRING)", cxxopts::value<std::string>(params->nonlinear_function), "STRING")
@@ -377,6 +378,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("coxnofirth", "not using firth in cox model, the test uses likelihood ratio test")
     ("coxscore-exact", "use exact score variance")
     ("nocov-approx", "skip adjusting for covariates in score test")
+    ("iso-from", "ISO timestamp to calculate hours from (e.g., 2024-01-15T10:30:00)", cxxopts::value<std::string>(), "TIMESTAMP")
+    ("iso-to", "ISO timestamp to calculate hours to (default: now)", cxxopts::value<std::string>(), "TIMESTAMP")
    ;
 
   try
@@ -404,6 +407,27 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       exit(EXIT_SUCCESS);
     }
 
+    // ISO timestamp to hours calculation (utility mode)
+    if(vm.count("iso-from")) {
+      std::string from_ts = vm["iso-from"].as<std::string>();
+      try {
+        double hours;
+        if(vm.count("iso-to")) {
+          std::string to_ts = vm["iso-to"].as<std::string>();
+          hours = TimestampCalculator::hoursBetween(from_ts, to_ts);
+          std::cout << std::fixed << std::setprecision(2);
+          std::cout << "Hours from " << from_ts << " to " << to_ts << ": " << hours << std::endl;
+        } else {
+          hours = TimestampCalculator::hoursFromNow(from_ts);
+          std::cout << std::fixed << std::setprecision(2);
+          std::cout << "Hours from " << from_ts << " to now: " << hours << std::endl;
+        }
+        exit(EXIT_SUCCESS);
+      } catch (const std::runtime_error& e) {
+        std::cerr << "ERROR: " << e.what() << std::endl;
+        exit(EXIT_FAILURE);
+      }
+    }
 
     if( vm.unmatched().size() > 0 ) {
       std::cout << "\nERROR: There are unmatched arguments:\n";

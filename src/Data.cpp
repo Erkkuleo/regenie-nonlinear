@@ -91,7 +91,6 @@ void Data::run() {
 
     if (params.nonlinear) {
       sout << calculateNonlinear(params.nonlinear_function, params.nonlinear_test, params.nonlinear_period, params.nonlinear_offset, params.nonlinear_in_degrees) << "\n";
-      sout << "erkka was here!!\n";
     }
 
   } else {  // step 1
