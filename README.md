@@ -1,94 +1,179 @@
-[![build](https://github.com/rgcgithub/regenie/actions/workflows/test.yml/badge.svg)](https://github.com/rgcgithub/regenie/actions/workflows/test.yml)
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/rgcgithub/regenie?logo=Github)
-[![install with conda](https://img.shields.io/badge/install%20with-conda-brightgreen.svg)](https://anaconda.org/bioconda/regenie)
-[![Github All Releases](https://img.shields.io/github/downloads/rgcgithub/regenie/total.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**regenie** is a C++ program for whole genome regression modelling of large [genome-wide association studies](https://en.wikipedia.org/wiki/Genome-wide_association_study).
+# regenie-nonlinear
 
-It is developed and supported by a team of scientists at the Regeneron Genetics Center.
+**regenie-nonlinear** is a standalone fork of [regenie](https://github.com/rgcgithub/regenie) that extends the original whole genome regression framework with nonlinear covariate transformations for interaction testing.
 
-The method has the following properties
+This fork is based on regenie v4.1.2 and is maintained independently. While it tracks upstream releases, it introduces features not available in the original regenie.
 
-- It works on quantitative, binary, and time-to-event traits, including binary traits with unbalanced case-control ratios and time-to-event traits with low event rates
-- It can handle population structure and relatedness
-- It can process multiple phenotypes at once efficiently
-- It is fast and memory efficient 🔥
-- For binary traits, it supports Firth logistic regression and an SPA test
-- For time-to-event traits, it supports Firth cox regression
-- It can perform gene/region-based tests, interaction tests and conditional analyses
-- It supports the [BGEN](https://www.well.ox.ac.uk/~gav/bgen_format/), [PLINK](https://www.cog-genomics.org/plink/1.9/formats#bed) bed/bim/fam and [PLINK2](https://www.cog-genomics.org/plink/2.0/formats#pgen) pgen/pvar/psam genetic data formats
-- It is ideally suited for implementation in [Apache Spark](https://spark.apache.org/) (see [GLOW](https://projectglow.io/))
-- It can be installed with [Conda](https://anaconda.org/bioconda/regenie)
+## Added features
 
-Full documentation for the **regenie** can be found [here](https://rgcgithub.github.io/regenie/).
+### Nonlinear interaction testing (`--nonlinear`)
 
-## Citation 
-Mbatchou, J., Barnard, L., Backman, J. et al. Computationally efficient whole-genome regression for quantitative and binary traits. Nat Genet 53, 1097–1103 (2021). https://doi.org/10.1038/s41588-021-00870-7
+Applies nonlinear basis expansions to the interaction covariate before fitting the interaction model. Instead of testing a single linear SNP x E interaction term, this expands the covariate into a nonlinear basis and tests multiple interaction terms jointly.
+
+For example, with **cosinor** (the default), a covariate E is expanded into sin(E) and cos(E), giving four terms in the model:
+
+- **sin(E)** and **cos(E)** as main-effect covariates
+- **sin(E) x SNP** and **cos(E) x SNP** as interaction terms
+
+This is useful for covariates with periodic or cyclical effects (e.g. time of day, season) where the relationship between the covariate and the outcome is not linear.
+
+**Usage:**
+
+```bash
+./regenie \
+  --step 2 \
+  --bed example/example \
+  --covarFile example/covariates.txt \
+  --phenoFile example/phenotype_bin.txt \
+  --bsize 200 \
+  --ignore-pred \
+  --interaction V1 \
+  --nonlinear \
+  --nonlinear-period 24.0 \
+  --force-qt \
+  --out test_nonlinear_out
+```
+
+**Nonlinear options:**
+
+| Option | Description | Default |
+|---|---|---|
+| `--nonlinear` | Enable nonlinear transformation of the interaction covariate | `false` |
+| `--nonlinear-function` | Transform function: `cosinor`, `sinor`, `cos`, `invsin`, `invcos`, `tan` | `cosinor` |
+| `--nonlinear-period` | Period parameter for the transform | `0.0` |
+| `--nonlinear-offset` | Phase offset for the transform | `0.0` |
+| `--degree` | Output results in degrees instead of radians | `false` |
+
+**Available transforms:**
+
+| Function | Expansion | Columns | Use case |
+|---|---|---|---|
+| `cosinor` | sin(2*pi*x/period + offset), cos(2*pi*x/period + offset) | 2 | Cyclical/periodic covariates |
+| `sinor` | sin(2*pi*x/period + offset) | 1 | Single sine transform |
+| `cos` | cos(x) | 1 | Single cosine transform |
+| `invsin` | asin(asin(sqrt(x))/period * 2*pi + offset) | 1 | Proportion variance stabilization |
+| `invcos` | acos(x/period * 2*pi + offset) | 1 | Inverse cosine transform |
+| `tan` | tan(x) | 1 | Tangent transform |
+
+The design is extensible — new transforms (e.g. GAM spline bases) can be added by extending three functions in `Nonlinear.cpp`.
+
+**Output format:**
+
+With cosinor, each variant produces 6 result rows (compared to 4 in standard interaction testing):
+
+```
+ADD-CONDTL            # SNP main effect conditional on sin(E), cos(E)
+ADD-INT_SNP           # SNP marginal effect
+ADD-INT_SNPxV1=V1_sin # Interaction: SNP x sin(E)
+ADD-INT_SNPxV1=V1_cos # Interaction: SNP x cos(E)
+ADD-INT_SNPxV1        # Joint interaction test (sin + cos)
+ADD-INT_3DF           # Joint 3-df test (SNP + SNP*sin + SNP*cos)
+```
+
+A `NONLINEAR` column in the output contains the transformed interaction value.
+
+### Nonlinear transform of p-values (`--fourier-transform-p`)
+
+Applies the selected nonlinear transform to the association p-values and reports the result in the `NONLINEAR` and `TRANS_INTERACT` output columns (HTP format).
+
+## Original regenie features
+
+All features of the original regenie v4.1.2 are preserved:
+
+- Works on quantitative, binary, and time-to-event traits, including binary traits with unbalanced case-control ratios
+- Handles population structure and relatedness
+- Processes multiple phenotypes at once efficiently
+- Fast and memory efficient
+- Supports Firth logistic regression, SPA test, and Firth cox regression
+- Gene/region-based tests, interaction tests, and conditional analyses
+- Supports BGEN, PLINK bed/bim/fam, and PLINK2 pgen/pvar/psam formats
+- Can be implemented in Apache Spark (see [GLOW](https://projectglow.io/))
+
+## Documentation
+
+Full documentation for the original **regenie** can be found at [https://rgcgithub.github.io/regenie/](https://rgcgithub.github.io/regenie/).
+
+The nonlinear features described above extend the `--interaction` functionality documented in the [GxE interaction testing](https://rgcgithub.github.io/regenie/options/#interaction-testing) section.
+
+## Installation
+
+### Docker
+
+```bash
+chmod u+x scripts/regenie_docker.sh
+scripts/regenie_docker.sh --build
+```
+
+### From source
+
+Requires the BGEN library. See the [original regenie installation instructions](https://rgcgithub.github.io/regenie/install/) for dependencies.
+
+```bash
+BGEN_PATH=/path/to/bgen cmake .
+make
+```
+
+## Quick start
+
+**Step 1** — Fit the whole genome regression model (unchanged from regenie):
+
+```bash
+./regenie \
+  --step 1 \
+  --bed example/example \
+  --exclude example/snplist_rm.txt \
+  --covarFile example/covariates.txt \
+  --phenoFile example/phenotype_bin.txt \
+  --remove example/fid_iid_to_remove.txt \
+  --bsize 100 \
+  --bt --lowmem \
+  --lowmem-prefix tmp_rg \
+  --out fit_bin_out
+```
+
+**Step 2** — Test for nonlinear interactions:
+
+```bash
+./regenie \
+  --step 2 \
+  --bgen example/example.bgen \
+  --covarFile example/covariates.txt \
+  --phenoFile example/phenotype_bin.txt \
+  --remove example/fid_iid_to_remove.txt \
+  --bsize 200 \
+  --bt \
+  --firth --approx \
+  --pThresh 0.01 \
+  --pred fit_bin_out_pred.list \
+  --interaction V1 \
+  --nonlinear \
+  --nonlinear-period 24.0 \
+  --force-qt \
+  --out test_nonlinear_out
+```
+
+## Citation
+
+If you use this software, please cite the original regenie paper:
+
+> Mbatchou, J., Barnard, L., Backman, J. et al. Computationally efficient whole-genome regression for quantitative and binary traits. *Nat Genet* 53, 1097-1103 (2021). [https://doi.org/10.1038/s41588-021-00870-7](https://doi.org/10.1038/s41588-021-00870-7)
+
+## Acknowledgements
+
+This fork builds on the excellent work of the regenie team at the Regeneron Genetics Center. We are grateful to Joelle Mbatchou, Andrey Ziyatdinov, Jonathan Marchini, and all contributors to the [original regenie project](https://github.com/rgcgithub/regenie) for developing and open-sourcing this software under the MIT license.
 
 ## License
 
-**regenie** is distributed under an [MIT license](https://github.com/rgcgithub/regenie/blob/master/LICENSE).
+**regenie-nonlinear** is distributed under an [MIT license](https://github.com/rgcgithub/regenie/blob/master/LICENSE), the same license as the original regenie.
 
 ## Contact
-If you have any questions about regenie please contact
 
+For issues specific to the nonlinear features in this fork, please use the issue tracker on this repository.
+
+For questions about the original regenie, please contact:
 - <jonathan.marchini@regeneron.com>
 - <joelle.mbatchou@regeneron.com>
 
-If you want to submit a issue concerning the software please do so
-using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/issues).
-
-
-## Version history
-[Version 4.1](https://github.com/rgcgithub/regenie/releases/tag/v4.1) (Timing reduction for single variant association tests; New option --htp to output summary statistics in the [HTP](https://rgcgithub.github.io/remeta/file_formats/#-htp) format; New option --skip-dosage-comp to skip dosage compensation for males in non-PAR chrX regions; Various bug fixes)
-
-[Version 4.0](https://github.com/rgcgithub/regenie/releases/tag/v4.0) (New options `--t2e` and `--eventColList` for time-to-event analysis to specify time-to-event analysis and the event phenotype name, respectively; Fix algorithm used to fit logistic Firth model when using `--write-null-firth` to match closer to the approach used in step 2)
-
-[Version 3.6](https://github.com/rgcgithub/regenie/releases/tag/v3.6) (Bug fix for the approximate Firth test when ultra-rare variants [MAC below 50] are being tested; Address convergence failures & speed-up exact Firth by using warm starts based on null model with just covariates)
-
-[Version 3.5](https://github.com/rgcgithub/regenie/releases/tag/v3.5) (Added CHR/POS columns to snplist output file when using `--write-mask-snplist`; Genotype counts are now reported in the sumstats file when using `--no-split`; Improved efficiency of LOOCV scheme in ridge level 0; Detect carriage return in fam/psam/bim/pvar/sample files; Minor bug fixes)
-
-[Version 3.4.1](https://github.com/rgcgithub/regenie/releases/tag/v3.4.1) (Reduction in memory usage for LD computation when writing to text files; Fix bug rejecting valid PVAR files)
-
-[Version 3.4](https://github.com/rgcgithub/regenie/releases/tag/v3.4) (Reduction in memory usage for LD computation with dosages; Minor bug fixes for LD computation; Bug fix for when carriage returns are in optional input files)
-
-[Version 3.3](https://github.com/rgcgithub/regenie/releases/tag/v3.3) (Faster implementation of approximate Firth LRT; New strategy for approximate Firth LRT with ultra-rare variants; Relaxed convergence criterion of Firth LRT from 1E-4 to 2.5E-4)
-
-[Version 3.2.9](https://github.com/rgcgithub/regenie/releases/tag/v3.2.9) (Switch to robust version of ACAT to handle very small p-values; Bug fix for Step1 when sex chromosome was included in the analysis; Allow for 64 domains when using the 4-column annotation file)
-
-[Version 3.2.8](https://github.com/rgcgithub/regenie/releases/tag/v3.2.8) (New option `--bgi` to specify custom index bgi file accompagnying BGEN file; Relax matching criteria between BGEN and index bgi files to use CPRA instead of variant ID)
-
-[Version 3.2.7](https://github.com/rgcgithub/regenie/releases/tag/v3.2.7) (New option `--force-mac-filter` to apply different MAC filter to subset of SNPs; Extend maximum number of domains to 32 for 4-column anno-file; Update PGEN library)
-
-[Version 3.2.6](https://github.com/rgcgithub/regenie/releases/tag/v3.2.6) (Relax tolerance parameter for null unpenalized logistic regression from 1e-8 to 1e-6; Minor bug fixes)
-
-[Version 3.2.5.3](https://github.com/rgcgithub/regenie/releases/tag/v3.2.5.3) (Fix inflation issue when testing main effect of SNP in GxE model; Minor bug fixes)
-
-[Version 3.2.5](https://github.com/rgcgithub/regenie/releases/tag/v3.2.5) (Use pseudo-data representation algorithm as default in step 2 single variant tests; Use ACAT to get SBAT p-value across POS/NEG models; Bug fix for ACATV when set has a single variant with zero weight)
-
-[Version 3.2.4](https://github.com/rgcgithub/regenie/releases/tag/v3.2.4) (Relaxed the requirement on the minimum number of unique values for QTs to 3; Various bug fixes)
-
-[Version 3.2.3](https://github.com/rgcgithub/regenie/releases/tag/v3.2.3) (Address convergence issues in Firth regression; Various bug fixes)
-
-[Version 3.2.2](https://github.com/rgcgithub/regenie/releases/tag/v3.2.2) (New columns in sumstats file (N_CASES/N_CONTROLS) to output the number of cases/controls when using `--af-cc`; Various bug fixes)
-
-[Version 3.2.1](https://github.com/rgcgithub/regenie/releases/tag/v3.2.1) (New option `--lovo-snplist` to only consider a subset of LOVO masks; Improve efficiency of LOVO for large sets to reduce memory usage; Bug fix for SPA with numerical overflow; For SKAT/ACAT tests with Firth correction, don't include SKAT weights when running Firth on single variants)
-
-[Version 3.2](https://github.com/rgcgithub/regenie/releases/tag/v3.2) (Bug fix for SKAT/SKATO when testing on binary traits using Firth/SPA; Switched name of NNLS joint test to SBAT test altering name of corresponding options and applied Bonferroni correction before reporting its p-value [correcting for minP of 2 tests])
-
-[Version 3.1.4](https://github.com/rgcgithub/regenie/releases/tag/v3.1.4) (New option `--par-region` to specify build to determine bounds for chrX PAR regions; new option `--force-qt` to force QT runs for traits with fewer than 10 values [otherwise will throw an error]; phenotype imputation for missing values is now applied after RINTing when using `--apply-rint`; several bug fixes)
-
-[Version 3.1.2](https://github.com/rgcgithub/regenie/releases/tag/v3.1.2) (Reduction in memory usage for SKAT/SKATO tests; Bug fix for LOVO with SKAT/ACAT tests; Improvements for null Firth logistic algorithm to address reported convergence issues)
-
-[Version 3.1.1](https://github.com/rgcgithub/regenie/releases/tag/v3.1.1) (Reduction in memory usage for SKAT/SKATO tests; Improvements for logistic regressions algorithms to address reported convergence issues)
-
-[Version 3.1](https://github.com/rgcgithub/regenie/releases/tag/v3.1) (Fixed bug in SKAT/SKATO tests when applying Firth/SPA correction; Improved SPA implementation by computing both tail probabilities; New option `--set-singletons` to specify variants to consider as singletons for burden masks; New option `--l1-phenoList` to run level 1 models in Step 1 in parallel across phenotypes; Several bug fixes)
-
-[Version 3.0.3](https://github.com/rgcgithub/regenie/releases/tag/v3.0.3) (Skip BTs where null model fit failed; Bug fix for BURDEN-ACAT; Bug fix when nan/inf values are in phenotype/covariate file)
-
-[Version 3.0.1](https://github.com/rgcgithub/regenie/releases/tag/v3.0.1) (Improve ridge logistic regression in Step 1; Add compilation with Cmake)
-
-[Version 3.0](https://github.com/rgcgithub/regenie/releases/tag/v3.0) (New gene-based tests: SKAT, SKATO, ACATV, ACATO and NNLS [Non-Negative Least Square test]; New GxE and GxG interaction testing functionality; New conditional analysis functionality; see [release page](https://github.com/rgcgithub/regenie/releases/tag/v3.0) for minor additions)
-
-For past releases, see [here](RELEASE_LOG.md).
+Or use the original **regenie** [issue tracker](https://github.com/rgcgithub/regenie/issues).
