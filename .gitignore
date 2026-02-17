@@ -1,6 +1,14 @@
 src/*.o
 external_libs/pgenlib/*.o
 external_libs/pgenlib/include/*.o
+external_libs/mvtnorm/*.o
+external_libs/mvtnorm/*.a
+external_libs/qf/*.o
+external_libs/qf/*.a
+external_libs/quadpack/*.o
+external_libs/quadpack/*.a
 docs/nature.csl
 build/
 notes
+example/
+test_nonlinear/

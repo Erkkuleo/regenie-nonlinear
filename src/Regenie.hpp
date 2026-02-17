@@ -442,7 +442,7 @@ struct param {
   bool nonlinear = false;
   double nonlinear_test = 0.0;
   double nonlinear_period = 0.0;
-  std::string nonlinear_function = "cos";
+  std::string nonlinear_function = "cosinor";
   double nonlinear_offset = 0.0;
   bool nonlinear_in_degrees = false;
 };
