@@ -2530,10 +2530,10 @@ std::string print_sum_stats_single(const double& af, const double& af_case, cons
   if(print_pv) buffer << ' ' << chisq << ' ' << pv;
   else buffer << " NA NA ";
   
-  if(print_linear)  {
+  if(print_linear && get_nonlinear_expansion_size(params->nonlinear_function) == 1)  {
     double linear_val = calculateNonlinear(params->nonlinear_function, std::pow(10.0, pv), params->nonlinear_period, params->nonlinear_offset, params->nonlinear_in_degrees);
     buffer << " " << linear_val;
-  } else buffer << "NA NA";
+  } else buffer << " NA";
 
   // extra column
   vector<string> extraCol;

@@ -318,6 +318,7 @@ struct param {
   double alpha_pvalue = 0.05, zcrit, z_thr, chisq_thr; // significance threshold above which to use firth correction
   int test_type = 0; // add=0/dom=1/rec=2 test
   bool w_interaction = false, interaction_cat = false, interaction_snp = false, interaction_prs = false, interaction_file = false, w_ltco = false, print_vcov = false, hlm_vquad = true, int_add_extra_term = false, int_add_esq = false, add_homdev = false; // interaction test
+  bool has_interaction2 = false; // second quantitative interaction covariate (--interaction2)
   int interaction_istart = 0, ltco_chr;
   uint64 interaction_snp_offset; // index in genotype file
   bool force_robust = false, force_hc4 = false, no_robust = false; // when using robust SE for rare variants with QTs
@@ -442,7 +443,7 @@ struct param {
   bool nonlinear = false;
   double nonlinear_test = 0.0;
   double nonlinear_period = 0.0;
-  std::string nonlinear_function = "cosinor";
+  std::string nonlinear_function = "sincos";
   double nonlinear_offset = 0.0;
   bool nonlinear_in_degrees = false;
 };
@@ -497,6 +498,7 @@ struct filter {
   std::map<int, bool> tpheno_colrm;
   uint32_t tpheno_indexCol;
   std::string interaction_cov;
+  std::string interaction_cov2; // second quantitative covariate for joint GxE test
   std::string interaction_cov_null_level;//if categorical for GxE / or coding for GxG
   std::map <int, bool> chrKeep_test;
   std::map <std::string, uint32_t> snpID_to_ind;

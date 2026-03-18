@@ -221,6 +221,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("condition-file", "optional genotype file which contains the variants to include as covariates", cxxopts::value<std::string>(),"FORMAT,FILE")
     ("condition-file-sample", "sample file accompanying BGEN file with the conditional variants", cxxopts::value<std::string>(files->condition_snps_info.sample),"FILE")
     ("interaction", "perform interaction testing with a quantitative/categorical covariate", cxxopts::value<std::string>(filters->interaction_cov),"STRING")
+    ("interaction2", "second quantitative covariate for joint GxE interaction test (requires --interaction)", cxxopts::value<std::string>(filters->interaction_cov2),"STRING")
     ("interaction-snp", "perform interaction testing with a variant", cxxopts::value<std::string>(filters->interaction_cov),"STRING")
     ("interaction-file", "optional genotype file which contains the variant for GxG interaction test", cxxopts::value<std::string>(),"FORMAT,FILE")
     ("interaction-file-sample", "sample file accompanying BGEN file with the interacting variant", cxxopts::value<std::string>(files->interaction_snp_info.sample),"FILE")
@@ -658,6 +659,13 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         filters->cov_colKeep_names[filters->interaction_cov] = true; // assume qt
       if(vm.count("no-condtl") || (vm.count("interaction-snp") && !vm.count("force-condtl")) )
         params->gwas_condtl = false;
+    }
+    if( (params->run_mode ==2) && vm.count("interaction2") ) {
+      if(!params->w_interaction || params->interaction_snp || params->interaction_prs)
+        throw "--interaction2 requires --interaction with a covariate (not --interaction-snp or --interaction-prs).";
+      params->has_interaction2 = true;
+      if(!in_map(filters->interaction_cov2, filters->cov_colKeep_names))
+        filters->cov_colKeep_names[filters->interaction_cov2] = true; // always quantitative
     }
     if( (params->run_mode ==2) && vm.count("interaction-prs") ) {
       params->w_interaction = true;

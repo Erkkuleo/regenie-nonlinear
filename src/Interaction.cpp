@@ -238,7 +238,7 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
       tstat = fabs( (bhat.tail(params->ncov_interaction).matrix().transpose() * Vinv * bhat.tail(params->ncov_interaction).matrix()).sum() );
       logp = max(params->nl_dbl_dmin, cdf(complement(chisqI, tstat)));
       logp = -log10( logp );
-      stmp="-INT_SNPx" + filters->interaction_cov;
+      stmp="-INT_2DF";
       // print sum_stats
       if(params->htp_out) 
         buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(-1, -1, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, params->ncov_interaction, params);
@@ -390,7 +390,7 @@ void apply_interaction_tests_HLM(const int& index, const int& isnp, const int& t
       tstat = fabs( (bhat.tail(params->ncov_interaction).matrix().transpose() * Vinv * bhat.tail(params->ncov_interaction).matrix()).sum() );
       logp = max(params->nl_dbl_dmin, cdf(complement(chisqI, tstat)));
       logp = -log10( logp );
-      stmp="-INT_SNPx" + filters->interaction_cov;
+      stmp="-INT_2DF";
       // print sum_stats
       if(params->htp_out) 
         buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(-1, -1, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, params->ncov_interaction, params);
@@ -561,7 +561,7 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
       tstat = fabs( (bhat.tail(params->ncov_interaction).matrix().transpose() * Vmat.block(beg+1,beg+1,params->ncov_interaction,params->ncov_interaction).inverse() * bhat.tail(params->ncov_interaction).matrix()).sum() );
       logp = max(params->nl_dbl_dmin, cdf(complement(chisqI, tstat)));
       logp = -log10( logp );
-      stmp="-INT_SNPx" + filters->interaction_cov;
+      stmp="-INT_2DF";
 
       // print sum_stats
       if(params->htp_out) 
@@ -817,7 +817,7 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
     if(tstat < 0) return "";
     logp = max(params->nl_dbl_dmin, cdf(complement(chisqI, tstat)));
     logp = -log10( logp );
-    stmp="-INT_SNPx" + filters->interaction_cov; // single cov
+    stmp="-INT_2DF";
 
     // print sum_stats
     if(params->htp_out) 

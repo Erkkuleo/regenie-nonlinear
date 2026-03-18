@@ -97,7 +97,7 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
       params->n_cov = pheno_data->new_cov.cols() - 1;// ignore intercept
       // add covariate names for interaction columns
       if(params->print_cov_betas) {
-        if(params->nonlinear) {
+        if(params->nonlinear || params->has_interaction2) {
           for(const auto& nm : params->interaction_lvl_names)
             params->covar_names.push_back(nm);
         } else if(!params->interaction_snp && !params->interaction_prs) {
@@ -583,10 +583,10 @@ void rm_phenoCols(Ref<ArrayXb> sample_keep, struct in_files* files, struct param
 
 void covariate_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, Ref<ArrayXb> ind_in_cov_and_geno, mstream& sout) {
 
-  int nc_cat = 0, np_inter = 0, nc_nonlinear = 0;
+  int nc_cat = 0, np_inter = 0, np_inter2 = 0, nc_nonlinear = 0;
   uint32_t indiv_index;
   ArrayXb keep_cols;
-  ArrayXd inter_cov_column;
+  ArrayXd inter_cov_column, inter_cov_column2;
   MatrixXd inter_cov_matrix;
   string line;
   std::vector< string > tmp_str_vec, covar_names;
@@ -634,6 +634,9 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
       // count nonlinear covariates (the interaction covariate when --nonlinear is set)
       if(params->nonlinear && params->w_interaction && !params->interaction_snp && !params->interaction_prs && (filters->interaction_cov == tmp_str_vec[i+2]) )
         nc_nonlinear = 1;
+      // second interaction covariate (--interaction2)
+      if(params->has_interaction2 && (filters->interaction_cov2 == tmp_str_vec[i+2]) )
+        np_inter2 = 1;
       if( params->print_cov_betas )
         params->covar_names.push_back(tmp_str_vec[i+2]);
     }
@@ -644,6 +647,8 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   params->n_cov = keep_cols.count(); 
   if(params->w_interaction && !params->interaction_snp && !params->interaction_prs && (np_inter != 1))
     throw "cannot find the interaction covariate specified in the covariate file.";
+  if(params->has_interaction2 && (np_inter2 != 1))
+    throw "cannot find the second interaction covariate (--interaction2) in the covariate file.";
   if( (int)filters->cov_colKeep_names.size() != params->n_cov ) 
     throw "not all covariates specified are found in the covariate file.";
 
@@ -656,9 +661,10 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   sout << "n_cov = " << params->n_cov << endl;
 
   // allocate memory 
-  pheno_data->new_cov = MatrixXd::Zero(params->n_samples, 1 + params->n_cov - np_inter);
+  pheno_data->new_cov = MatrixXd::Zero(params->n_samples, 1 + params->n_cov - np_inter - np_inter2);
   pheno_data->new_cov.col(0) = MatrixXd::Ones(params->n_samples, 1);
   if(params->w_interaction && !params->interaction_snp && !params->interaction_prs) inter_cov_column.resize(params->n_samples);
+  if(params->has_interaction2) inter_cov_column2.resize(params->n_samples);
 
   // read in data
   while( fClass.readLine(line) ){
@@ -699,6 +705,14 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
           break;
         }
 
+      } else if(params->has_interaction2 && (covar_names[i_cov] == filters->interaction_cov2)) {
+
+        inter_cov_column2(indiv_index) = convertDouble(tmp_str_vec[2+j], params, sout);
+        if( inter_cov_column2(indiv_index) == params->missing_value_double ) {
+          ind_in_cov_and_geno(indiv_index) = false;
+          break;
+        }
+
       } else { // regular covariate
 
         if( filters->cov_colKeep_names[ covar_names[i_cov] ] ) // quantitative
@@ -726,6 +740,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   // mask individuals in genotype data but not in covariate data
   pheno_data->new_cov.array().colwise() *= ind_in_cov_and_geno.cast<double>();
   if(inter_cov_column.size() > 0) inter_cov_column *= ind_in_cov_and_geno.cast<double>();
+  if(inter_cov_column2.size() > 0) inter_cov_column2 *= ind_in_cov_and_geno.cast<double>();
   // nonlinear covariates are masked via inter_cov_column above (raw values before expansion)
 
   // add dummy variables if needed
@@ -746,8 +761,10 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
       if( filters->cov_colKeep_names[ covar_names[i] ] ) { // qCovar so copy column
 
-        if(params->w_interaction && !params->interaction_snp && !params->interaction_prs && (covar_names[i] == filters->interaction_cov)) { 
-          inter_cov_matrix = inter_cov_column.matrix(); continue; 
+        if(params->w_interaction && !params->interaction_snp && !params->interaction_prs && (covar_names[i] == filters->interaction_cov)) {
+          inter_cov_matrix = inter_cov_column.matrix(); continue;
+        } else if(params->has_interaction2 && (covar_names[i] == filters->interaction_cov2)) {
+          continue; // inter_cov_column2 already stored; skip to avoid copying to full_covarMat
         } else
           full_covarMat.col(full_col) = pheno_data->new_cov.col(raw_col);
         if(params->print_cov_betas) full_cov_names[full_col] = params->covar_names[raw_col];
@@ -799,13 +816,13 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
   // expand nonlinear interaction covariate (parallel to dummy variable expansion above)
   if(nc_nonlinear > 0) {
-    // expand raw interaction covariate values into nonlinear basis (e.g. sin + cos for cosinor)
+    // expand raw interaction covariate values into nonlinear basis (e.g. sin + cos for sincos)
     inter_cov_matrix = get_nonlinear_basis(inter_cov_column,
                                             params->nonlinear_function,
                                             params->nonlinear_period,
                                             params->nonlinear_offset,
                                             params->nonlinear_in_degrees);
-    np_inter = inter_cov_matrix.cols(); // number of interaction columns (e.g. 2 for cosinor)
+    np_inter = inter_cov_matrix.cols(); // number of interaction columns (e.g. 2 for sincos)
 
     // generate names for nonlinear basis columns
     get_nonlinear_names(params->interaction_lvl_names, filters->interaction_cov, params->nonlinear_function);
@@ -815,9 +832,22 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
          << " (" << inter_cov_matrix.cols() << " basis columns)" << endl;
   }
 
-  if(params->w_interaction && !params->interaction_snp && !params->interaction_prs) // save inter cov
-    pheno_data->interaction_cov = (nc_nonlinear > 0) ? inter_cov_matrix :
+  if(params->w_interaction && !params->interaction_snp && !params->interaction_prs) { // save inter cov
+    MatrixXd primary = (nc_nonlinear > 0) ? inter_cov_matrix :
       (filters->cov_colKeep_names[filters->interaction_cov] ? inter_cov_column.matrix() : inter_cov_matrix);
+    if(params->has_interaction2) {
+      // Stack primary columns and the second interaction covariate
+      pheno_data->interaction_cov.resize(primary.rows(), primary.cols() + 1);
+      pheno_data->interaction_cov.leftCols(primary.cols()) = primary;
+      pheno_data->interaction_cov.rightCols(1) = inter_cov_column2.matrix();
+      // Populate interaction_lvl_names: for nonlinear, names already populated; for linear, add both
+      if(nc_nonlinear == 0)
+        params->interaction_lvl_names.push_back(filters->interaction_cov);
+      params->interaction_lvl_names.push_back(filters->interaction_cov2);
+    } else {
+      pheno_data->interaction_cov = primary;
+    }
+  }
 
   sout <<  "   -number of individuals with covariate data = " << ind_in_cov_and_geno.count() << endl;
   if(params->w_interaction) {
@@ -965,7 +995,8 @@ void extract_interaction_nonlinear(param* params,
     // Nonlinear basis expansion is now performed in covariate_read().
     // This function validates the result.
     int ncols = pheno_data->interaction_cov.cols();
-    int expected = get_nonlinear_expansion_size(params->nonlinear_function);
+    int expected = get_nonlinear_expansion_size(params->nonlinear_function)
+                   + (params->has_interaction2 ? 1 : 0);
 
     if(ncols != expected)
       throw "nonlinear interaction_cov has " + to_string(ncols)
