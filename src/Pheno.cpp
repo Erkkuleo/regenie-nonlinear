@@ -41,11 +41,32 @@
 #include "Step2_Models.hpp"
 #include "Pheno.hpp"
 #include "Nonlinear.hpp"
+#include "Timestamp.hpp"
 
 using namespace std;
 using namespace Eigen;
 using namespace boost;
 using boost::math::normal;
+
+
+void parse_sample_timestamps(struct phenodt* pheno_data, int n_samples) {
+  pheno_data->tod = Eigen::ArrayXd::Zero(n_samples);
+  pheno_data->toy = Eigen::ArrayXd::Zero(n_samples);
+  for (int i = 0; i < n_samples; i++) {
+    if (i >= (int)pheno_data->timestamp_strings.size() ||
+        pheno_data->timestamp_strings[i].empty()) {
+      continue;  // missing timestamp: tod=0, toy=0 (individual will be masked)
+    }
+    try {
+      pheno_data->tod(i) = TimestampCalculator::extractTOD(pheno_data->timestamp_strings[i]);
+      pheno_data->toy(i) = TimestampCalculator::extractTOY(pheno_data->timestamp_strings[i]);
+    } catch (const std::exception& e) {
+      throw std::string("Error parsing timestamp for sample index ") + std::to_string(i) +
+            ": " + e.what();
+    }
+  }
+  pheno_data->timestamp_strings.clear();  // free memory
+}
 
 
 void read_pheno_and_cov(struct in_files* files, struct param* params, struct filter* filters, struct phenodt* pheno_data, struct ests* m_ests, struct geno_block* gblock, mstream& sout) {
@@ -84,6 +105,48 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   if(!files->cov_file.empty()) covariate_read(params, files, filters, pheno_data, ind_in_cov_and_geno, sout);
   if(params->condition_snps)
       extract_condition_snps(params, files, filters, pheno_data, gblock, ind_in_cov_and_geno, sout);
+
+  // --- Circadian cosinor/sinor basis construction ---
+  if (params->nonlinear &&
+      (params->nonlinear_function == "cosinor" || params->nonlinear_function == "sinor")) {
+      // Parse ISO timestamps → tod/toy arrays
+      parse_sample_timestamps(pheno_data, params->n_samples);
+
+      // Build harmonic basis
+      Eigen::MatrixXd harm = get_cosinor_basis(pheno_data->tod, pheno_data->toy,
+                                                params->nonlinear_function);
+      // Set interaction_cov (SNP × harmonic terms)
+      pheno_data->interaction_cov = harm;
+
+      // Unconditionally append harmonic main effects to new_cov for confounding control.
+      // (This MUST be unconditional — circadian main effects must always be in the null model.)
+      pheno_data->new_cov.conservativeResize(pheno_data->new_cov.rows(),
+                                             pheno_data->new_cov.cols() + harm.cols());
+      pheno_data->new_cov.rightCols(harm.cols()) = harm;
+      params->n_cov = pheno_data->new_cov.cols() - 1;
+
+      // Set interaction column names
+      std::vector<std::string> harm_names;
+      get_nonlinear_names(harm_names, "", params->nonlinear_function);
+      params->interaction_lvl_names = harm_names;
+      if (params->print_cov_betas) {
+          for (const auto& nm : harm_names)
+              params->covar_names.push_back(nm);
+      }
+
+      // Enable interaction path downstream
+      params->w_interaction = true;
+      // Disable gwas_condtl to prevent double-appending harmonics to new_cov
+      // in the w_interaction block below (we already added them above).
+      params->gwas_condtl = false;
+
+      sout << "   -circadian " << params->nonlinear_function << " model: "
+           << harm.cols() << " interaction columns ("
+           << harm_names[0];
+      for (size_t k = 1; k < harm_names.size(); k++) sout << ", " << harm_names[k];
+      sout << ")" << std::endl;
+  }
+
   if(params->w_interaction){
     if(params->nonlinear) {
       extract_interaction_nonlinear(params, filters, pheno_data, ind_in_cov_and_geno, sout);
@@ -182,8 +245,9 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   // check pheno with preds 
   if(params->test_mode && !params->getCorMat) check_blup(files, params, sout);
 
-  // get phenotype names 
+  // get phenotype names
   keep_cols = ArrayXb::Constant(tmp_str_vec.size() - 2, true);
+  int timestamp_col_index = -1;
   for(int i = 0; i < keep_cols.size(); i++ ) {
     if(params->select_phenos_rm) // check if should skip phenotypes
       keep_cols(i) = !in_map(tmp_str_vec[i+2], filters->pheno_colRm_names);
@@ -194,8 +258,17 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
       keep_cols(i) = has_blup(tmp_str_vec[i+2], files->blup_files, params, sout);
     }
 
+    // detect timestamp column — exclude from phenotype matrix
+    if (!params->timestamp_col.empty() && tmp_str_vec[i+2] == params->timestamp_col) {
+      timestamp_col_index = i;
+      keep_cols(i) = false;  // exclude from phenotype matrix
+      continue;              // don't add to pheno_names
+    }
+
     if(keep_cols(i)) files->pheno_names.push_back( tmp_str_vec[i+2] );
   }
+  if (!params->timestamp_col.empty() && timestamp_col_index == -1)
+    throw "--timestamp column '" + params->timestamp_col + "' not found in phenotype file header";
   params->n_pheno = keep_cols.count();
 
   // check #pheno
@@ -220,6 +293,8 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
     pheno_data->phenotypes_raw = MatrixXd::Zero(params->n_samples, params->n_pheno);
   if(params->trait_mode == 3)
     pheno_data->cox_max_tau.resize(params->n_pheno);
+  if (timestamp_col_index >= 0)
+    pheno_data->timestamp_strings.resize(params->n_samples);
 
   // read in data
   while( fClass.readLine(line) ){
@@ -296,6 +371,11 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
       }
     } else {
       for(int j = 0, i_pheno = 0; j < keep_cols.size(); j++) {
+
+        if (j == timestamp_col_index) {
+          pheno_data->timestamp_strings[indiv_index] = tmp_str_vec[2+j];
+          continue;
+        }
 
         if( !keep_cols(j) ) continue;
 

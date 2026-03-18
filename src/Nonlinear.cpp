@@ -31,11 +31,13 @@ double invcosCalculator(double value, double period, double phaseOffset) {
 }
 
 int get_nonlinear_expansion_size(const std::string& nl_function) {
+    if (nl_function == "cosinor") return 4;  // tod_sin, tod_cos, toy_sin, toy_cos
+    if (nl_function == "sinor")   return 2;  // tod_sin, toy_sin
     if (nl_function == "sincos") return 2;  // sin + cos pair
     // single-transform functions
-    if (nl_function == "sin"   || nl_function == "cos"    ||
-        nl_function == "sinor" || nl_function == "invsin" ||
-        nl_function == "invcos" || nl_function == "tan") return 1;
+    if (nl_function == "sin"    || nl_function == "cos"    ||
+        nl_function == "invsin" || nl_function == "invcos" ||
+        nl_function == "tan") return 1;
     // default: assume single transform
     return 1;
 }
@@ -69,6 +71,14 @@ Eigen::MatrixXd get_nonlinear_basis(const Eigen::Ref<const Eigen::ArrayXd>& raw_
 void get_nonlinear_names(std::vector<std::string>& names,
                          const std::string& base_name,
                          const std::string& nl_function) {
+    if (nl_function == "cosinor") {
+        names = {"tod_sin", "tod_cos", "toy_sin", "toy_cos"};
+        return;
+    }
+    if (nl_function == "sinor") {
+        names = {"tod_sin", "toy_sin"};
+        return;
+    }
     if (nl_function == "sincos") {
         names.resize(2);
         names[0] = base_name + "_sin";
@@ -76,6 +86,31 @@ void get_nonlinear_names(std::vector<std::string>& names,
     } else {
         names.resize(1);
         names[0] = base_name + "_" + nl_function;
+    }
+}
+
+Eigen::MatrixXd get_cosinor_basis(
+    const Eigen::Ref<const Eigen::ArrayXd>& tod,
+    const Eigen::Ref<const Eigen::ArrayXd>& toy,
+    const std::string& nl_function) {
+
+    const double TWO_PI = 2.0 * M_PI;
+    int n = tod.size();
+    Eigen::ArrayXd angle_tod = (tod / 24.0)  * TWO_PI;
+    Eigen::ArrayXd angle_toy = (toy / 365.0) * TWO_PI;
+
+    if (nl_function == "cosinor") {
+        Eigen::MatrixXd basis(n, 4);
+        basis.col(0) = angle_tod.sin().matrix();  // tod_sin
+        basis.col(1) = angle_tod.cos().matrix();  // tod_cos
+        basis.col(2) = angle_toy.sin().matrix();  // toy_sin
+        basis.col(3) = angle_toy.cos().matrix();  // toy_cos
+        return basis;
+    } else {  // sinor
+        Eigen::MatrixXd basis(n, 2);
+        basis.col(0) = angle_tod.sin().matrix();  // tod_sin
+        basis.col(1) = angle_toy.sin().matrix();  // toy_sin
+        return basis;
     }
 }
 
