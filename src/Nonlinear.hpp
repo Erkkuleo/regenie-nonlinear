@@ -23,4 +23,14 @@ void get_nonlinear_names(std::vector<std::string>& names,
                          const std::string& base_name,
                          const std::string& nl_function);
 
+/// Build interaction matrix from pre-computed tod and toy arrays.
+/// nl_function: "cosinor" -> 4 cols (tod_sin, tod_cos, toy_sin, toy_cos)
+///              "sinor"   -> 2 cols (tod_sin, toy_sin)
+/// tod: time-of-day in hours [0, 24)
+/// toy: time-of-year as day-of-year [0, 365)
+Eigen::MatrixXd get_cosinor_basis(
+    const Eigen::Ref<const Eigen::ArrayXd>& tod,
+    const Eigen::Ref<const Eigen::ArrayXd>& toy,
+    const std::string& nl_function);
+
 #endif // NONLINEAR_HPP
