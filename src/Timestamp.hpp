@@ -81,6 +81,36 @@ public:
     static double hoursTo(const std::string& reference_iso, const std::string& target_iso) {
         return hoursBetween(reference_iso, target_iso);
     }
+
+    /// Extract time-of-day in decimal hours [0, 24) from ISO 8601 string.
+    /// e.g. "2024-03-15T09:30:00" → 9.5
+    static double extractTOD(const std::string& iso_timestamp) {
+        auto tp = parseISO(iso_timestamp);
+        std::time_t t = std::chrono::system_clock::to_time_t(tp);
+        std::tm tm_buf = {};
+#ifdef _WIN32
+        gmtime_s(&tm_buf, &t);
+        std::tm* tm_info = &tm_buf;
+#else
+        std::tm* tm_info = gmtime_r(&t, &tm_buf);
+#endif
+        return tm_info->tm_hour + tm_info->tm_min / 60.0 + tm_info->tm_sec / 3600.0;
+    }
+
+    /// Extract time-of-year as day-of-year [0, 364] from ISO 8601 string.
+    /// e.g. "2024-01-15T09:30:00" → 14  (Jan 15 = day index 14, 0-based)
+    static double extractTOY(const std::string& iso_timestamp) {
+        auto tp = parseISO(iso_timestamp);
+        std::time_t t = std::chrono::system_clock::to_time_t(tp);
+        std::tm tm_buf = {};
+#ifdef _WIN32
+        gmtime_s(&tm_buf, &t);
+        std::tm* tm_info = &tm_buf;
+#else
+        std::tm* tm_info = gmtime_r(&t, &tm_buf);
+#endif
+        return static_cast<double>(tm_info->tm_yday);  // 0 = Jan 1
+    }
 };
 
 #endif
