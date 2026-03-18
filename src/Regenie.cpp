@@ -1211,14 +1211,17 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     // --timestamp names a covariate column containing ISO 8601 timestamps; values are converted to
     // hours-of-day (0.0–24.0) before the cosinor/sinor nonlinear expansion
     if (params->nonlinear &&
-        (params->nonlinear_function == "cosinor" || params->nonlinear_function == "sinor") &&
+        (params->nonlinear_function == "cosinor"     || params->nonlinear_function == "sinor" ||
+         params->nonlinear_function == "tod_cosinor" || params->nonlinear_function == "toy_cosinor") &&
         params->timestamp_col.empty()) {
       throw "--nonlinear-function " + params->nonlinear_function + " requires --timestamp <col>";
     }
     if (!params->timestamp_col.empty() &&
-        params->nonlinear_function != "cosinor" &&
-        params->nonlinear_function != "sinor") {
-      throw "--timestamp is only valid with --nonlinear-function cosinor or sinor";
+        params->nonlinear_function != "cosinor"     &&
+        params->nonlinear_function != "sinor"       &&
+        params->nonlinear_function != "tod_cosinor" &&
+        params->nonlinear_function != "toy_cosinor") {
+      throw "--timestamp is only valid with --nonlinear-function cosinor, sinor, tod_cosinor or toy_cosinor";
     }
 
     if( params->test_mode && params->select_chrs && in_map(-1, filters->chrKeep_test) )

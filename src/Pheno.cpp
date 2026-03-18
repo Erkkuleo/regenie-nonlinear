@@ -108,37 +108,36 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
 
   // --- Circadian cosinor/sinor basis construction ---
   if (params->nonlinear &&
-      (params->nonlinear_function == "cosinor" || params->nonlinear_function == "sinor")) {
+      (params->nonlinear_function == "cosinor"     || params->nonlinear_function == "sinor" ||
+       params->nonlinear_function == "tod_cosinor" || params->nonlinear_function == "toy_cosinor")) {
       // Parse ISO timestamps → tod/toy arrays
       parse_sample_timestamps(pheno_data, params->n_samples);
 
-      // Build harmonic basis
-      Eigen::MatrixXd harm = get_cosinor_basis(pheno_data->tod, pheno_data->toy,
-                                                params->nonlinear_function);
+      Eigen::MatrixXd harm;
+      if (params->nonlinear_function == "cosinor" || params->nonlinear_function == "sinor") {
+          // Multi-column: tod + toy harmonics
+          harm = get_cosinor_basis(pheno_data->tod, pheno_data->toy, params->nonlinear_function);
+      } else {
+          // Single cosine: cos((value/period)*2π + offset)
+          const Eigen::ArrayXd& vals = (params->nonlinear_function == "tod_cosinor")
+              ? pheno_data->tod : pheno_data->toy;
+          double period = (params->nonlinear_function == "tod_cosinor") ? 24.0 : 365.0;
+          harm = get_nonlinear_basis(vals, "cos", period,
+                                     params->nonlinear_offset, params->nonlinear_in_degrees);
+      }
+
       // Set interaction_cov (SNP × harmonic terms)
       pheno_data->interaction_cov = harm;
-
-      // Unconditionally append harmonic main effects to new_cov for confounding control.
-      // (This MUST be unconditional — circadian main effects must always be in the null model.)
-      pheno_data->new_cov.conservativeResize(pheno_data->new_cov.rows(),
-                                             pheno_data->new_cov.cols() + harm.cols());
-      pheno_data->new_cov.rightCols(harm.cols()) = harm;
-      params->n_cov = pheno_data->new_cov.cols() - 1;
 
       // Set interaction column names
       std::vector<std::string> harm_names;
       get_nonlinear_names(harm_names, "", params->nonlinear_function);
       params->interaction_lvl_names = harm_names;
-      if (params->print_cov_betas) {
-          for (const auto& nm : harm_names)
-              params->covar_names.push_back(nm);
-      }
 
-      // Enable interaction path downstream
+      // Enable interaction path downstream.
+      // gwas_condtl stays true (default) so the existing w_interaction block
+      // appends interaction_cov to new_cov and registers covariate names.
       params->w_interaction = true;
-      // Disable gwas_condtl to prevent double-appending harmonics to new_cov
-      // in the w_interaction block below (we already added them above).
-      params->gwas_condtl = false;
 
       sout << "   -circadian " << params->nonlinear_function << " model: "
            << harm.cols() << " interaction columns ("

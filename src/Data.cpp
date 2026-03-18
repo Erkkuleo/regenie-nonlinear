@@ -89,7 +89,7 @@ void Data::run() {
   if(params.test_mode){  // step 2
     run_step2();
 
-    if (params.nonlinear) {
+    if (params.nonlinear && get_nonlinear_expansion_size(params.nonlinear_function) == 1) {
       sout << calculateNonlinear(params.nonlinear_function, params.nonlinear_test, params.nonlinear_period, params.nonlinear_offset, params.nonlinear_in_degrees) << "\n";
     }
 

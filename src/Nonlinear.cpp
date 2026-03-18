@@ -33,6 +33,7 @@ double invcosCalculator(double value, double period, double phaseOffset) {
 int get_nonlinear_expansion_size(const std::string& nl_function) {
     if (nl_function == "cosinor") return 4;  // tod_sin, tod_cos, toy_sin, toy_cos
     if (nl_function == "sinor")   return 2;  // tod_sin, toy_sin
+    if (nl_function == "tod_cosinor" || nl_function == "toy_cosinor") return 1;
     if (nl_function == "sincos") return 2;  // sin + cos pair
     // single-transform functions
     if (nl_function == "sin"    || nl_function == "cos"    ||
@@ -79,6 +80,8 @@ void get_nonlinear_names(std::vector<std::string>& names,
         names = {"tod_sin", "toy_sin"};
         return;
     }
+    if (nl_function == "tod_cosinor") { names = {"tod_cos"}; return; }
+    if (nl_function == "toy_cosinor") { names = {"toy_cos"}; return; }
     if (nl_function == "sincos") {
         names.resize(2);
         names[0] = base_name + "_sin";
@@ -122,6 +125,10 @@ double calculateNonlinear(std::string function, double value, double period, dou
             return (cosinorCalculator(value, period, phaseOffset)*(180/(M_PI)));
         } else if (function == "sinor") {
             return (sinorCalculator(value, period, phaseOffset)*(180/(M_PI)));
+        } else if (function == "tod_cosinor") {
+            return (cosinorCalculator(value, 24.0, phaseOffset)*(180/(M_PI)));
+        } else if (function == "toy_cosinor") {
+            return (cosinorCalculator(value, 365.0, phaseOffset)*(180/(M_PI)));
         } else if (function == "invsin") {
             return (invsinCalculator(value, period, phaseOffset)*(180/(M_PI)));
         } else if (function == "invcos") {
@@ -139,6 +146,10 @@ double calculateNonlinear(std::string function, double value, double period, dou
             return cosinorCalculator(value, period, phaseOffset);
         } else if (function == "sinor") {
             return sinorCalculator(value, period, phaseOffset);
+        } else if (function == "tod_cosinor") {
+            return cosinorCalculator(value, 24.0, phaseOffset);
+        } else if (function == "toy_cosinor") {
+            return cosinorCalculator(value, 365.0, phaseOffset);
         } else if (function == "invsin") {
             return invsinCalculator(value, period, phaseOffset);
         } else if (function == "invcos") {
