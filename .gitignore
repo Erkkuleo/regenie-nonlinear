@@ -12,3 +12,5 @@ build/
 notes
 example/
 test_nonlinear/
+docs/
+.worktrees/
