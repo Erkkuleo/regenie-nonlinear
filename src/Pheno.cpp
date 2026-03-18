@@ -105,6 +105,48 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   if(!files->cov_file.empty()) covariate_read(params, files, filters, pheno_data, ind_in_cov_and_geno, sout);
   if(params->condition_snps)
       extract_condition_snps(params, files, filters, pheno_data, gblock, ind_in_cov_and_geno, sout);
+
+  // --- Circadian cosinor/sinor basis construction ---
+  if (params->nonlinear &&
+      (params->nonlinear_function == "cosinor" || params->nonlinear_function == "sinor")) {
+      // Parse ISO timestamps → tod/toy arrays
+      parse_sample_timestamps(pheno_data, params->n_samples);
+
+      // Build harmonic basis
+      Eigen::MatrixXd harm = get_cosinor_basis(pheno_data->tod, pheno_data->toy,
+                                                params->nonlinear_function);
+      // Set interaction_cov (SNP × harmonic terms)
+      pheno_data->interaction_cov = harm;
+
+      // Unconditionally append harmonic main effects to new_cov for confounding control.
+      // (This MUST be unconditional — circadian main effects must always be in the null model.)
+      pheno_data->new_cov.conservativeResize(pheno_data->new_cov.rows(),
+                                             pheno_data->new_cov.cols() + harm.cols());
+      pheno_data->new_cov.rightCols(harm.cols()) = harm;
+      params->n_cov = pheno_data->new_cov.cols() - 1;
+
+      // Set interaction column names
+      std::vector<std::string> harm_names;
+      get_nonlinear_names(harm_names, "", params->nonlinear_function);
+      params->interaction_lvl_names = harm_names;
+      if (params->print_cov_betas) {
+          for (const auto& nm : harm_names)
+              params->covar_names.push_back(nm);
+      }
+
+      // Enable interaction path downstream
+      params->w_interaction = true;
+      // Disable gwas_condtl to prevent double-appending harmonics to new_cov
+      // in the w_interaction block below (we already added them above).
+      params->gwas_condtl = false;
+
+      sout << "   -circadian " << params->nonlinear_function << " model: "
+           << harm.cols() << " interaction columns ("
+           << harm_names[0];
+      for (size_t k = 1; k < harm_names.size(); k++) sout << ", " << harm_names[k];
+      sout << ")" << std::endl;
+  }
+
   if(params->w_interaction){
     if(params->nonlinear) {
       extract_interaction_nonlinear(params, filters, pheno_data, ind_in_cov_and_geno, sout);
