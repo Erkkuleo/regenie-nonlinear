@@ -10,17 +10,107 @@ This fork is based on regenie v4.1.2 and is maintained independently. While it t
 
 ### Nonlinear interaction testing (`--nonlinear`)
 
-Applies nonlinear basis expansions to the interaction covariate before fitting the interaction model. Instead of testing a single linear SNP x E interaction term, this expands the covariate into a nonlinear basis and tests multiple interaction terms jointly.
+Applies a nonlinear basis expansion to the interaction covariate before fitting the interaction model. Instead of a single linear SNP×E term, the covariate is expanded into one or more transformed columns, each tested as a separate interaction term and jointly via multi-DF tests.
 
-For example, with **cosinor** (the default), a covariate E is expanded into sin(E) and cos(E), giving four terms in the model:
+This is useful for covariates with periodic or cyclical structure — for example, time of day or season — where a linear interaction term would miss the true signal.
 
-- **sin(E)** and **cos(E)** as main-effect covariates
-- **sin(E) x SNP** and **cos(E) x SNP** as interaction terms
+#### New CLI options
 
-This is useful for covariates with periodic or cyclical effects (e.g. time of day, season) where the relationship between the covariate and the outcome is not linear.
+| Option | Type | Description | Default |
+|---|---|---|---|
+| `--nonlinear` | bool | Enable nonlinear interaction mode | `false` |
+| `--nonlinear-function <name>` | string | Transform to apply (see table below) | `sincos` |
+| `--nonlinear-period <val>` | float | Period divisor used in sin/cos/sincos transforms | `1.0` |
+| `--nonlinear-offset <val>` | float | Phase offset added inside the transform (radians by default) | `0.0` |
+| `--degree` | bool | Interpret and return phase offset in degrees instead of radians | `false` |
+| `--nonlinear-test <val>` | float | Scalar test value printed in the `NONLINEAR` output column (size-1 functions only) | `1.0` |
+| `--timestamp <col>` | string | Column in the phenotype file containing ISO 8601 timestamps; required for circadian modes | — |
 
-**Usage:**
+#### Available functions
 
+There are two families of functions: **generic** (applied to any covariate via `--interaction`) and **circadian** (derived from ISO 8601 sample timestamps via `--timestamp`).
+
+**Generic transforms** — require `--interaction <col>`
+
+| Function | Formula | Interaction columns | DF |
+|---|---|---|---|
+| `sincos` | sin(2π×x/period + offset), cos(2π×x/period + offset) | `<col>_sin`, `<col>_cos` | 2+1 |
+| `sin` | sin(2π×x/period + offset) | `<col>_sin` | 1+1 |
+| `cos` | cos(2π×x/period + offset) | `<col>_cos` | 1+1 |
+| `invsin` | asin(asin(√x)/period × 2π + offset) | `<col>_invsin` | 1+1 |
+| `invcos` | acos(x/period × 2π + offset) | `<col>_invcos` | 1+1 |
+| `tan` | tan(x) | `<col>_tan` | 1+1 |
+
+**Circadian transforms** — require `--timestamp <col>` (ISO 8601 column in the phenotype file)
+
+| Function | Source | Formula | Interaction columns | DF |
+|---|---|---|---|---|
+| `cosinor` | timestamp | sin+cos of time-of-day and day-of-year | `tod_sin`, `tod_cos`, `toy_sin`, `toy_cos` | 4+1 |
+| `sinor` | timestamp | sin of time-of-day and day-of-year | `tod_sin`, `toy_sin` | 2+1 |
+| `tod_cosinor` | timestamp | cos(hour_of_day / 24 × 2π + offset) | `tod_cos` | 1+1 |
+| `toy_cosinor` | timestamp | cos(day_of_year / 365 × 2π + offset) | `toy_cos` | 1+1 |
+
+DF column shows (interaction-only joint test DF) + 1 for the SNP-main-effect joint test.
+
+#### Output rows per SNP
+
+Each variant produces one row per interaction column plus joint tests. Examples:
+
+**`sincos`** (2 interaction columns)
+```
+ADD-CONDTL                    marginal SNP effect conditioned on interaction covariates
+ADD-INT_SNP                   SNP main effect in interaction model
+ADD-INT_SNPxV1=V1_sin         SNP × sin(V1)
+ADD-INT_SNPxV1=V1_cos         SNP × cos(V1)
+ADD-INT_2DF                   joint test: both interactions
+ADD-INT_3DF                   joint test: SNP main + both interactions
+```
+
+**`cosinor`** (4 interaction columns, from timestamp)
+```
+ADD-CONDTL                    marginal SNP effect
+ADD-INT_SNP                   SNP main effect
+ADD-INT_SNPx=tod_sin          SNP × sin(hour_of_day / 24 × 2π)
+ADD-INT_SNPx=tod_cos          SNP × cos(hour_of_day / 24 × 2π)
+ADD-INT_SNPx=toy_sin          SNP × sin(day_of_year / 365 × 2π)
+ADD-INT_SNPx=toy_cos          SNP × cos(day_of_year / 365 × 2π)
+ADD-INT_4DF                   joint test: all 4 interactions
+ADD-INT_5DF                   joint test: SNP main + all 4 interactions
+```
+
+**`sinor`** (2 interaction columns, from timestamp)
+```
+ADD-CONDTL                    marginal SNP effect
+ADD-INT_SNP                   SNP main effect
+ADD-INT_SNPx=tod_sin          SNP × sin(hour_of_day / 24 × 2π)
+ADD-INT_SNPx=toy_sin          SNP × sin(day_of_year / 365 × 2π)
+ADD-INT_2DF                   joint test: both interactions
+ADD-INT_3DF                   joint test: SNP main + both interactions
+```
+
+**`tod_cosinor`** (1 interaction column, from timestamp)
+```
+ADD-CONDTL                    marginal SNP effect
+ADD-INT_SNP                   SNP main effect
+ADD-INT_SNPx=tod_cos          SNP × cos(time-of-day)
+ADD-INT_1DF                   joint test: interaction only
+ADD-INT_2DF                   joint test: SNP main + interaction
+```
+
+**`toy_cosinor`** (1 interaction column, from timestamp)
+```
+ADD-CONDTL                    marginal SNP effect
+ADD-INT_SNP                   SNP main effect
+ADD-INT_SNPx=toy_cos          SNP × cos(day-of-year)
+ADD-INT_1DF                   joint test: interaction only
+ADD-INT_2DF                   joint test: SNP main + interaction
+```
+
+The `NONLINEAR` output column is populated for size-1 functions (`sin`, `cos`, `tod_cosinor`, `toy_cosinor`) and contains the transformed value of `--nonlinear-test` at the variant p-value. It is `NA` for multi-column functions.
+
+#### Usage examples
+
+Generic sincos expansion of a covariate:
 ```bash
 ./regenie \
   --step 2 \
@@ -31,48 +121,36 @@ This is useful for covariates with periodic or cyclical effects (e.g. time of da
   --ignore-pred \
   --interaction V1 \
   --nonlinear \
+  --nonlinear-function sincos \
   --nonlinear-period 24.0 \
   --force-qt \
   --out test_nonlinear_out
 ```
 
-**Nonlinear options:**
-
-| Option | Description | Default |
-|---|---|---|
-| `--nonlinear` | Enable nonlinear transformation of the interaction covariate | `false` |
-| `--nonlinear-function` | Transform function: `cosinor`, `sinor`, `cos`, `invsin`, `invcos`, `tan` | `cosinor` |
-| `--nonlinear-period` | Period parameter for the transform | `0.0` |
-| `--nonlinear-offset` | Phase offset for the transform | `0.0` |
-| `--degree` | Output results in degrees instead of radians | `false` |
-
-**Available transforms:**
-
-| Function | Expansion | Columns | Use case |
-|---|---|---|---|
-| `cosinor` | sin(2*pi*x/period + offset), cos(2*pi*x/period + offset) | 2 | Cyclical/periodic covariates |
-| `sinor` | sin(2*pi*x/period + offset) | 1 | Single sine transform |
-| `cos` | cos(x) | 1 | Single cosine transform |
-| `invsin` | asin(asin(sqrt(x))/period * 2*pi + offset) | 1 | Proportion variance stabilization |
-| `invcos` | acos(x/period * 2*pi + offset) | 1 | Inverse cosine transform |
-| `tan` | tan(x) | 1 | Tangent transform |
-
-The design is extensible — new transforms (e.g. GAM spline bases) can be added by extending three functions in `Nonlinear.cpp`.
-
-**Output format:**
-
-With cosinor, each variant produces 6 result rows (compared to 4 in standard interaction testing):
-
-```
-ADD-CONDTL            # SNP main effect conditional on sin(E), cos(E)
-ADD-INT_SNP           # SNP marginal effect
-ADD-INT_SNPxV1=V1_sin # Interaction: SNP x sin(E)
-ADD-INT_SNPxV1=V1_cos # Interaction: SNP x cos(E)
-ADD-INT_SNPxV1        # Joint interaction test (sin + cos)
-ADD-INT_3DF           # Joint 3-df test (SNP + SNP*sin + SNP*cos)
+Full circadian cosinor using sample timestamps:
+```bash
+./regenie \
+  --step 2 \
+  --bed example/example \
+  --covarFile example/covariates.txt \
+  --phenoFile example/phenotype_with_timestamp.txt \
+  --bsize 200 \
+  --ignore-pred \
+  --nonlinear \
+  --nonlinear-function cosinor \
+  --timestamp MOC_TIMEOFYEAR \
+  --force-qt \
+  --out test_cosinor_out
 ```
 
-A `NONLINEAR` column in the output contains the transformed interaction value.
+### ISO timestamp utility
+
+Calculate hours between two ISO 8601 timestamps without running a GWAS:
+
+```bash
+regenie --iso-from 2024-01-15T08:00:00 --iso-to 2024-01-15T14:30:00
+regenie --iso-from 2024-01-15T08:00:00   # hours from timestamp to now
+```
 
 ### Nonlinear transform of p-values (`--fourier-transform-p`)
 
@@ -149,6 +227,7 @@ make
   --pred fit_bin_out_pred.list \
   --interaction V1 \
   --nonlinear \
+  --nonlinear-function sincos \
   --nonlinear-period 24.0 \
   --force-qt \
   --out test_nonlinear_out
