@@ -446,6 +446,7 @@ struct param {
   std::string nonlinear_function = "sincos";
   double nonlinear_offset = 0.0;
   bool nonlinear_in_degrees = false;
+  std::string timestamp_col = "";   // column name for ISO 8601 timestamps in pheno file (for cosinor/sinor)
 };
 
 struct geno_file_info {

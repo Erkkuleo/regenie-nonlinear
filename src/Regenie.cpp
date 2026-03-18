@@ -261,6 +261,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("nonlinear-function", "nonlinear function to apply (e.g. spline,cubic, cos) (STRING)", cxxopts::value<std::string>(params->nonlinear_function), "STRING")
     ("nonlinear-offset", "include an offset term for the nonlinear model", cxxopts::value<double>(params->nonlinear_offset), "FLOAT(=0.0)")
     ("degree", "gives result in degrees instead of radians", cxxopts::value<bool>(params->nonlinear_in_degrees), "BOOLEAN")
+    ("timestamp",
+     "name of the ISO 8601 timestamp column in the phenotype file (for --nonlinear-function cosinor/sinor)",
+     cxxopts::value<std::string>(params->timestamp_col),
+     "STRING")
 ;
 
 
@@ -1203,6 +1207,19 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       throw "must use --interaction-snp if using --interaction-file.";
     if( !vm.count("covarFile") && vm.count("interaction") && !vm.count("interaction-snp") )
       throw "must use --covarFile if using --interaction.";
+
+    // --timestamp names a covariate column containing ISO 8601 timestamps; values are converted to
+    // hours-of-day (0.0–24.0) before the cosinor/sinor nonlinear expansion
+    if (params->nonlinear &&
+        (params->nonlinear_function == "cosinor" || params->nonlinear_function == "sinor") &&
+        params->timestamp_col.empty()) {
+      throw "--nonlinear-function " + params->nonlinear_function + " requires --timestamp <col>";
+    }
+    if (!params->timestamp_col.empty() &&
+        params->nonlinear_function != "cosinor" &&
+        params->nonlinear_function != "sinor") {
+      throw "--timestamp is only valid with --nonlinear-function cosinor or sinor";
+    }
 
     if( params->test_mode && params->select_chrs && in_map(-1, filters->chrKeep_test) )
       throw "invalid chromosome specified by --chr/--chrList.";
