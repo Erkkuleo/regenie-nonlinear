@@ -14,3 +14,18 @@ example/
 test_nonlinear/
 docs/
 .worktrees/
+
+# Docker build progress artifacts
+=
+CACHED
+[builder
+[internal]
+[stage-1
+exporting
+extracting
+naming
+resolve
+transferring
+writing
+sha256:*
+regenie

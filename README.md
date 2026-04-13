@@ -25,6 +25,12 @@ This is useful for covariates with periodic or cyclical structure — for exampl
 | `--degree` | bool | Interpret and return phase offset in degrees instead of radians | `false` |
 | `--nonlinear-test <val>` | float | Scalar test value printed in the `NONLINEAR` output column (size-1 functions only) | `1.0` |
 | `--timestamp <col>` | string | Column in the phenotype file containing ISO 8601 timestamps; required for circadian modes | — |
+| `--timestamp-tz <offset>` | string | Shift naive/UTC timestamps to local time (e.g. `+03:00`, `-05:30`). Ignored for timestamps that already carry an explicit offset | `+00:00` |
+| `--sunrise-zt` | bool | Re-anchor the cosinor clock to local sunrise (Zeitgeber Time) instead of midnight. Requires location via `--latitude`/`--longitude` or `--lat-col`/`--lon-col` | `false` |
+| `--latitude <val>` | float | Study-site latitude in decimal degrees N; used by `--sunrise-zt` | — |
+| `--longitude <val>` | float | Study-site longitude in decimal degrees E; used by `--sunrise-zt` | — |
+| `--lat-col <col>` | string | Per-sample latitude column in the covariate file; used by `--sunrise-zt` | — |
+| `--lon-col <col>` | string | Per-sample longitude column in the covariate file; used by `--sunrise-zt` | — |
 
 #### Available functions
 
@@ -127,7 +133,7 @@ Generic sincos expansion of a covariate:
   --out test_nonlinear_out
 ```
 
-Full circadian cosinor using sample timestamps:
+Full circadian cosinor using sample timestamps (UTC, Helsinki study site):
 ```bash
 ./regenie \
   --step 2 \
@@ -139,9 +145,49 @@ Full circadian cosinor using sample timestamps:
   --nonlinear \
   --nonlinear-function cosinor \
   --timestamp MOC_TIMEOFYEAR \
+  --timestamp-tz +03:00 \
   --force-qt \
   --out test_cosinor_out
 ```
+
+Circadian cosinor anchored to local sunrise (Zeitgeber Time):
+```bash
+./regenie \
+  --step 2 \
+  --bed example/example \
+  --covarFile example/covariates.txt \
+  --phenoFile example/phenotype_with_timestamp.txt \
+  --bsize 200 \
+  --ignore-pred \
+  --nonlinear \
+  --nonlinear-function cosinor \
+  --timestamp MOC_TIMEOFYEAR \
+  --timestamp-tz +03:00 \
+  --sunrise-zt \
+  --latitude 60.17 \
+  --longitude 24.94 \
+  --force-qt \
+  --out test_cosinor_zt_out
+```
+
+### Timezone-aware ISO 8601 timestamp parsing
+
+Timestamps in the phenotype file can carry an explicit UTC offset (`+03:00`, `-05:30`, `Z`) or be naive UTC strings. The parser handles all four ISO 8601 formats:
+
+| Format | Example | Behaviour |
+|---|---|---|
+| Explicit offset | `2024-03-15T09:30:00+03:00` | Local wall-clock time read directly from the string |
+| UTC (`Z`) | `2024-03-15T09:30:00Z` | Shifted by `--timestamp-tz` (default 0) |
+| Naive | `2024-03-15T09:30:00` | Shifted by `--timestamp-tz` (default 0) |
+| Date only | `2024-03-15` | Time-of-day set to 0 |
+
+The system timezone of the machine running regenie is never consulted.
+
+### Sunrise Zeitgeber Time (`--sunrise-zt`)
+
+Re-anchors the cosinor clock to local sunrise rather than midnight, following the concept of Zeitgeber Time (ZT) used in circadian biology. Time-of-day for each sample is expressed as hours elapsed since sunrise on the day of measurement.
+
+Sunrise is computed using the NOAA solar position algorithm. Location can be provided at the study level (`--latitude`/`--longitude`) or per-sample (`--lat-col`/`--lon-col` columns in the covariate file). Polar night (no sunrise) is handled gracefully — affected samples produce a warning and are excluded from ZT computation.
 
 ### ISO timestamp utility
 

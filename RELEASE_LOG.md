@@ -1,3 +1,16 @@
+## Fork changelog
+
+**v4.1.2-nonlinear (2026-04-13)**
+
+- `--nonlinear` / `--nonlinear-function`: nonlinear basis expansion of interaction covariates (`sincos`, `sin`, `cos`, `invsin`, `invcos`, `tan`)
+- `--nonlinear-function cosinor` / `sinor`: circadian cosinor models driven by ISO 8601 sample timestamps (`--timestamp <col>`)
+- `--timestamp-tz <offset>`: shift naive UTC timestamps to local wall-clock time (e.g. `+03:00`)
+- `--sunrise-zt`: re-anchor the cosinor clock origin from midnight to local sunrise (NOAA algorithm); location via `--latitude`/`--longitude` or per-sample `--lat-col`/`--lon-col`
+- ISO timestamp utility: `--iso-from` / `--iso-to` to compute elapsed hours between timestamps without running a GWAS
+- `--fourier-transform-p`: apply nonlinear transform to association p-values
+
+---
+
 ## Changelog for past releases
 
 Version 2.2.4 (Bug fix for multi-trait step 1 run with binary traits of different missingness patterns)
