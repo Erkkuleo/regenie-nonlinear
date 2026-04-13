@@ -42,6 +42,7 @@
 #include "Pheno.hpp"
 #include "Nonlinear.hpp"
 #include "Timestamp.hpp"
+#include "Sunrise.hpp"
 
 using namespace std;
 using namespace Eigen;
@@ -49,22 +50,63 @@ using namespace boost;
 using boost::math::normal;
 
 
-void parse_sample_timestamps(struct phenodt* pheno_data, int n_samples) {
+void parse_sample_timestamps(struct phenodt* pheno_data, struct param* params, int n_samples, mstream& sout) {
   pheno_data->tod = Eigen::ArrayXd::Zero(n_samples);
   pheno_data->toy = Eigen::ArrayXd::Zero(n_samples);
+
+  int polar_night_count = 0;
+
   for (int i = 0; i < n_samples; i++) {
     if (i >= (int)pheno_data->timestamp_strings.size() ||
         pheno_data->timestamp_strings[i].empty()) {
       continue;  // missing timestamp: tod=0, toy=0 (individual will be masked)
     }
+    const std::string& ts = pheno_data->timestamp_strings[i];
     try {
-      pheno_data->tod(i) = TimestampCalculator::extractTOD(pheno_data->timestamp_strings[i]);
-      pheno_data->toy(i) = TimestampCalculator::extractTOY(pheno_data->timestamp_strings[i]);
+      pheno_data->tod(i) = TimestampCalculator::extractTOD(ts, params->timestamp_tz_offset_hours);
+      pheno_data->toy(i) = TimestampCalculator::extractTOY(ts);
     } catch (const std::exception& e) {
       throw std::string("Error parsing timestamp for sample index ") + std::to_string(i) +
             ": " + e.what();
     }
+
+    // Apply sunrise ZT adjustment if requested
+    if (params->sunrise_zt) {
+      double lat = params->latitude;
+      double lon = params->longitude;
+
+      // Per-sample override if columns were provided
+      if (pheno_data->sample_lats.size() > 0 && !std::isnan(pheno_data->sample_lats(i)))
+        lat = pheno_data->sample_lats(i);
+      if (pheno_data->sample_lons.size() > 0 && !std::isnan(pheno_data->sample_lons(i)))
+        lon = pheno_data->sample_lons(i);
+
+      int doy  = static_cast<int>(pheno_data->toy(i)) + 1;  // toy is 0-based; NOAA wants 1-based
+      int year = TimestampCalculator::extractYear(ts);
+
+      double sunrise_utc = SunriseCalculator::computeSunrise(lat, lon, doy, year);
+
+      if (std::isnan(sunrise_utc)) {
+        // Polar night: sun never rises — skip ZT adjustment for this sample
+        polar_night_count++;
+      } else if (std::isinf(sunrise_utc)) {
+        // Polar day: sun never sets — use midnight (ZT=0 at 00:00 local)
+        double sunrise_local = 0.0 + params->timestamp_tz_offset_hours;
+        double tod_zt = std::fmod(pheno_data->tod(i) - sunrise_local + 24.0, 24.0);
+        pheno_data->tod(i) = tod_zt;
+      } else {
+        double sunrise_local = sunrise_utc + params->timestamp_tz_offset_hours;
+        double tod_zt = std::fmod(pheno_data->tod(i) - sunrise_local + 48.0, 24.0);
+        pheno_data->tod(i) = tod_zt;
+      }
+    }
   }
+
+  if (polar_night_count > 0) {
+    sout << "WARNING: " << polar_night_count
+         << " sample(s) have polar-night dates (no sunrise); ZT adjustment skipped for those samples.\n";
+  }
+
   pheno_data->timestamp_strings.clear();  // free memory
 }
 
@@ -110,8 +152,8 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   if (params->nonlinear &&
       (params->nonlinear_function == "cosinor"     || params->nonlinear_function == "sinor" ||
        params->nonlinear_function == "tod_cosinor" || params->nonlinear_function == "toy_cosinor")) {
-      // Parse ISO timestamps → tod/toy arrays
-      parse_sample_timestamps(pheno_data, params->n_samples);
+      // Parse ISO timestamps → tod/toy arrays (applies TZ shift and ZT if enabled)
+      parse_sample_timestamps(pheno_data, params, params->n_samples, sout);
 
       Eigen::MatrixXd harm;
       if (params->nonlinear_function == "cosinor" || params->nonlinear_function == "sinor") {
@@ -247,6 +289,8 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   // get phenotype names
   keep_cols = ArrayXb::Constant(tmp_str_vec.size() - 2, true);
   int timestamp_col_index = -1;
+  int lat_col_index = -1;
+  int lon_col_index = -1;
   for(int i = 0; i < keep_cols.size(); i++ ) {
     if(params->select_phenos_rm) // check if should skip phenotypes
       keep_cols(i) = !in_map(tmp_str_vec[i+2], filters->pheno_colRm_names);
@@ -264,10 +308,26 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
       continue;              // don't add to pheno_names
     }
 
+    // detect per-sample lat/lon columns for --sunrise-zt
+    if (!params->lat_col.empty() && tmp_str_vec[i+2] == params->lat_col) {
+      lat_col_index = i;
+      keep_cols(i) = false;
+      continue;
+    }
+    if (!params->lon_col.empty() && tmp_str_vec[i+2] == params->lon_col) {
+      lon_col_index = i;
+      keep_cols(i) = false;
+      continue;
+    }
+
     if(keep_cols(i)) files->pheno_names.push_back( tmp_str_vec[i+2] );
   }
   if (!params->timestamp_col.empty() && timestamp_col_index == -1)
     throw "--timestamp column '" + params->timestamp_col + "' not found in phenotype file header";
+  if (!params->lat_col.empty() && lat_col_index == -1)
+    throw "--lat-col column '" + params->lat_col + "' not found in phenotype file header";
+  if (!params->lon_col.empty() && lon_col_index == -1)
+    throw "--lon-col column '" + params->lon_col + "' not found in phenotype file header";
   params->n_pheno = keep_cols.count();
 
   // check #pheno
@@ -294,6 +354,10 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
     pheno_data->cox_max_tau.resize(params->n_pheno);
   if (timestamp_col_index >= 0)
     pheno_data->timestamp_strings.resize(params->n_samples);
+  if (lat_col_index >= 0) {
+    pheno_data->sample_lats = Eigen::ArrayXd::Constant(params->n_samples, std::numeric_limits<double>::quiet_NaN());
+    pheno_data->sample_lons = Eigen::ArrayXd::Constant(params->n_samples, std::numeric_limits<double>::quiet_NaN());
+  }
 
   // read in data
   while( fClass.readLine(line) ){
@@ -373,6 +437,18 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
         if (j == timestamp_col_index) {
           pheno_data->timestamp_strings[indiv_index] = tmp_str_vec[2+j];
+          continue;
+        }
+
+        if (j == lat_col_index) {
+          try { pheno_data->sample_lats(indiv_index) = std::stod(tmp_str_vec[2+j]); }
+          catch (...) { /* leave NaN for missing/invalid */ }
+          continue;
+        }
+
+        if (j == lon_col_index) {
+          try { pheno_data->sample_lons(indiv_index) = std::stod(tmp_str_vec[2+j]); }
+          catch (...) { /* leave NaN for missing/invalid */ }
           continue;
         }
 

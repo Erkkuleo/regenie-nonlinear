@@ -38,6 +38,7 @@
 #include <memory>
 #include <map>
 #include <fstream>
+#include <limits>
 #include <math.h>       /* exp */
 #include <stdio.h>
 #include <stdlib.h>
@@ -447,6 +448,14 @@ struct param {
   double nonlinear_offset = 0.0;
   bool nonlinear_in_degrees = false;
   std::string timestamp_col = "";   // column name for ISO 8601 timestamps in pheno file (for cosinor/sinor)
+  double timestamp_tz_offset_hours = 0.0; // UTC offset applied to naive timestamps (from --timestamp-tz)
+
+  // Sunrise / Zeitgeber Time
+  bool sunrise_zt = false;          // --sunrise-zt: use sunrise as ZT=0 origin
+  double latitude  = std::numeric_limits<double>::quiet_NaN();
+  double longitude = std::numeric_limits<double>::quiet_NaN();
+  std::string lat_col = "";         // per-sample latitude column name
+  std::string lon_col = "";         // per-sample longitude column name
 };
 
 struct geno_file_info {

@@ -46,6 +46,9 @@ struct phenodt {
   Eigen::ArrayXd tod;                          // time-of-day in hours [0, 24), per sample
   Eigen::ArrayXd toy;                          // day-of-year [0, 365), per sample
   std::vector<std::string> timestamp_strings;  // raw ISO strings indexed by sample index
+  // Per-sample location for --sunrise-zt (NaN = not provided, use CLI default)
+  Eigen::ArrayXd sample_lats;                  // decimal degrees N
+  Eigen::ArrayXd sample_lons;                  // decimal degrees E
   Eigen::ArrayXd Neff; // number of non-missing samples (per trait)
   Eigen::RowVectorXd scale_Y;
   Eigen::ArrayXd skew_Y; // skewness of phenotypes
@@ -99,7 +102,7 @@ bool cmp_rank_pair(struct rank_pair&,struct rank_pair&);
 void compute_skew(struct phenodt*,struct param const*);
 double skew_pheno(const Eigen::Ref<const Eigen::ArrayXd> & , const Eigen::Ref<const ArrayXb> & );
 void extract_interaction_nonlinear(param* params,filter* filters,phenodt* pheno_data,Eigen::Ref<Eigen::Array<bool, -1, 1>> ind_in_cov_and_geno,mstream& sout);
-void parse_sample_timestamps(struct phenodt*, int n_samples);
+void parse_sample_timestamps(struct phenodt*, struct param*, int n_samples, mstream&);
 
 #endif
 

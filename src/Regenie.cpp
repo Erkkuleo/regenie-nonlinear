@@ -265,6 +265,30 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
      "name of the ISO 8601 timestamp column in the phenotype file (for --nonlinear-function cosinor/sinor)",
      cxxopts::value<std::string>(params->timestamp_col),
      "STRING")
+    ("timestamp-tz",
+     "UTC offset of naive (no-TZ) timestamps, e.g. '+02:00' or '-05:00'. Shifts UTC-assumed timestamps to local time before cosinor basis construction.",
+     cxxopts::value<std::string>(),
+     "STRING(=+00:00)")
+    ("sunrise-zt",
+     "use local sunrise as ZT=0 clock origin for the cosinor model (requires --latitude/--longitude or --lat-col/--lon-col)",
+     cxxopts::value<bool>(params->sunrise_zt),
+     "BOOLEAN")
+    ("latitude",
+     "study-wide latitude in decimal degrees (e.g. 60.17); used with --sunrise-zt",
+     cxxopts::value<double>(params->latitude),
+     "FLOAT")
+    ("longitude",
+     "study-wide longitude in decimal degrees (e.g. 24.94); used with --sunrise-zt",
+     cxxopts::value<double>(params->longitude),
+     "FLOAT")
+    ("lat-col",
+     "covariate column name for per-sample latitude (overrides --latitude when present)",
+     cxxopts::value<std::string>(params->lat_col),
+     "STRING")
+    ("lon-col",
+     "covariate column name for per-sample longitude (overrides --longitude when present)",
+     cxxopts::value<std::string>(params->lon_col),
+     "STRING")
 ;
 
 
@@ -1223,6 +1247,40 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         params->nonlinear_function != "toy_cosinor") {
       throw "--timestamp is only valid with --nonlinear-function cosinor, sinor, tod_cosinor or toy_cosinor";
     }
+
+    // Parse --timestamp-tz "+HH:MM" / "-HH:MM" → double hours
+    if (vm.count("timestamp-tz")) {
+      if (params->timestamp_col.empty())
+        throw "--timestamp-tz requires --timestamp to be specified";
+      std::string tz_str = vm["timestamp-tz"].as<std::string>();
+      if (tz_str.size() != 6 || tz_str[3] != ':' ||
+          (tz_str[0] != '+' && tz_str[0] != '-'))
+        throw "--timestamp-tz must be in the form +HH:MM or -HH:MM (e.g. +02:00)";
+      int tz_hh = std::stoi(tz_str.substr(1, 2));
+      int tz_mm = std::stoi(tz_str.substr(4, 2));
+      params->timestamp_tz_offset_hours = tz_hh + tz_mm / 60.0;
+      if (tz_str[0] == '-') params->timestamp_tz_offset_hours = -params->timestamp_tz_offset_hours;
+    }
+
+    // Validate --sunrise-zt location flags
+    if (params->sunrise_zt) {
+      if (params->timestamp_col.empty())
+        throw "--sunrise-zt requires --timestamp to be specified";
+      // Use vm.count() — do NOT use std::isnan() here; the build uses -ffast-math
+      // which makes isnan(NaN) return false, breaking NaN sentinel checks.
+      bool has_cli_loc  = vm.count("latitude") && vm.count("longitude");
+      bool has_col_loc  = !params->lat_col.empty() && !params->lon_col.empty();
+      if (!has_cli_loc && !has_col_loc)
+        throw "--sunrise-zt requires either --latitude+--longitude or --lat-col+--lon-col";
+      if (!params->lat_col.empty() && params->lon_col.empty())
+        throw "--lat-col requires --lon-col to also be specified";
+      if (params->lat_col.empty() && !params->lon_col.empty())
+        throw "--lon-col requires --lat-col to also be specified";
+    }
+    if (!params->lat_col.empty() && !params->sunrise_zt)
+      throw "--lat-col requires --sunrise-zt to be enabled";
+    if (!params->lon_col.empty() && !params->sunrise_zt)
+      throw "--lon-col requires --sunrise-zt to be enabled";
 
     if( params->test_mode && params->select_chrs && in_map(-1, filters->chrKeep_test) )
       throw "invalid chromosome specified by --chr/--chrList.";
