@@ -256,7 +256,6 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("force-qt", "force QT run for traits with few unique values")
     ("par-region", "build code to identify PAR region boundaries on chrX", cxxopts::value<std::string>(params->build_code),"STRING(=hg38)")
     ("nonlinear", "use nonlinear calculations", cxxopts::value<bool>(params->nonlinear), "BOOLEAN")
-    ("nonlinear-test", "testing values", cxxopts::value<double>(params->nonlinear_test), "FLOAT(=1.0)")
     ("nonlinear-period", "scale factor applied before nonlinear transform (FLOAT)", cxxopts::value<double>(params->nonlinear_period), "FLOAT(=1.0)")
     ("nonlinear-function", "nonlinear function to apply (e.g. spline,cubic, cos) (STRING)", cxxopts::value<std::string>(params->nonlinear_function), "STRING")
     ("nonlinear-offset", "include an offset term for the nonlinear model", cxxopts::value<double>(params->nonlinear_offset), "FLOAT(=0.0)")
@@ -1231,6 +1230,15 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       throw "must use --interaction-snp if using --interaction-file.";
     if( !vm.count("covarFile") && vm.count("interaction") && !vm.count("interaction-snp") )
       throw "must use --covarFile if using --interaction.";
+
+    // Non-timestamp nonlinear functions require --nonlinear-period (period=0 causes division by zero)
+    if (params->nonlinear && params->nonlinear_period == 0.0 &&
+        params->nonlinear_function != "cosinor"     &&
+        params->nonlinear_function != "sinor"       &&
+        params->nonlinear_function != "tod_cosinor" &&
+        params->nonlinear_function != "toy_cosinor") {
+      throw "--nonlinear-function " + params->nonlinear_function + " requires --nonlinear-period to be set (period cannot be 0)";
+    }
 
     // --timestamp names a covariate column containing ISO 8601 timestamps; values are converted to
     // hours-of-day (0.0–24.0) before the cosinor/sinor nonlinear expansion

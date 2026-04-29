@@ -166,10 +166,6 @@ public:
         return static_cast<double>(duration.count()) / 3600.0;
     }
 
-    static double hoursTo(const std::string& reference_iso, const std::string& target_iso) {
-        return hoursBetween(reference_iso, target_iso);
-    }
-
     // -------------------------------------------------------------------------
     // Extract 4-digit calendar year from ISO 8601 string.
     // -------------------------------------------------------------------------

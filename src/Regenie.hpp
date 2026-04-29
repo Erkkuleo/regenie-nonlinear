@@ -442,7 +442,6 @@ struct param {
   //fourier-transformation to p-values
   bool do_fourier_p = false;  
   bool nonlinear = false;
-  double nonlinear_test = 0.0;
   double nonlinear_period = 0.0;
   std::string nonlinear_function = "sincos";
   double nonlinear_offset = 0.0;
