@@ -188,6 +188,38 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
       sout << ")" << std::endl;
   }
 
+  // Step 1 LOCO: include full sin+cos harmonic basis as covariates so LOCO
+  // predictions absorb the circadian main effect before Step 2 interaction
+  // tests run. Without this, residuals carry TOD/TOY signal -> genome-wide inflation.
+  if (!params->test_mode && params->nonlinear && !params->timestamp_col.empty()) {
+    const double TWO_PI = 2.0 * M_PI;
+    Eigen::MatrixXd step1_harm;
+
+    if (params->nonlinear_function == "tod_cosinor") {
+      step1_harm.resize(params->n_samples, 2);
+      step1_harm.col(0) = ((pheno_data->tod / 24.0) * TWO_PI).cos().matrix();
+      step1_harm.col(1) = ((pheno_data->tod / 24.0) * TWO_PI).sin().matrix();
+    } else if (params->nonlinear_function == "toy_cosinor") {
+      step1_harm.resize(params->n_samples, 2);
+      step1_harm.col(0) = ((pheno_data->toy / 365.0) * TWO_PI).cos().matrix();
+      step1_harm.col(1) = ((pheno_data->toy / 365.0) * TWO_PI).sin().matrix();
+    } else {
+      // "cosinor" (4 cols: tod_sin, tod_cos, toy_sin, toy_cos)
+      // "sinor"   (2 cols: tod_sin, toy_sin)
+      step1_harm = get_cosinor_basis(pheno_data->tod, pheno_data->toy,
+                                     params->nonlinear_function);
+    }
+
+    pheno_data->new_cov.conservativeResize(
+        pheno_data->new_cov.rows(),
+        pheno_data->new_cov.cols() + step1_harm.cols());
+    pheno_data->new_cov.rightCols(step1_harm.cols()) = step1_harm;
+    params->n_cov = pheno_data->new_cov.cols() - 1;
+
+    sout << "   -Step 1: including " << step1_harm.cols()
+         << " harmonic covariate(s) from --timestamp in LOCO model" << std::endl;
+  }
+
   if(params->w_interaction){
     if(params->nonlinear) {
       extract_interaction_nonlinear(params, filters, pheno_data, ind_in_cov_and_geno, sout);

@@ -10,7 +10,7 @@ This fork is based on regenie v4.1.2 and is maintained independently. While it t
 
 ### Nonlinear interaction testing (`--nonlinear`)
 
-Applies a nonlinear basis expansion to the interaction covariate before fitting the interaction model. Instead of a single linear SNP×E term, the covariate is expanded into one or more transformed columns, each tested as a separate interaction term and jointly via multi-DF tests.
+Applies a nonlinear basis expansion to the interaction covariate in both steps of the regenie pipeline. In Step 2, the expanded columns replace the single linear SNP×E term, enabling multi-DF interaction tests. In Step 1, for circadian functions that use `--timestamp`, regenie automatically computes the full harmonic basis (sin + cos) and includes it as LOCO covariates so that the circadian main effect is properly accounted for before interaction testing.
 
 This is useful for covariates with periodic or cyclical structure — for example, time of day or season — where a linear interaction term would miss the true signal.
 
@@ -114,6 +114,12 @@ ADD-INT_2DF                   joint test: SNP main + interaction
 
 The `NONLINEAR` output column is populated for size-1 functions (`sin`, `cos`, `tod_cosinor`, `toy_cosinor`) and contains the transformed value of `--nonlinear-test` at the variant p-value. It is `NA` for multi-column functions.
 
+#### Two-step usage for circadian models
+
+When using circadian functions (`tod_cosinor`, `toy_cosinor`, `cosinor`, `sinor`) with `--timestamp`, the **same `--nonlinear` flags must be passed to both Step 1 and Step 2**. In Step 1, regenie automatically computes the full harmonic basis (sin + cos) from the timestamp column and includes it as covariates in the LOCO whole-genome regression. This ensures the LOCO predictions absorb the circadian main effect before Step 2 interaction tests run. Without this, the residuals carry unmodeled time-of-day or time-of-year signal and all interaction tests are inflated genome-wide.
+
+There is no need to pre-compute or manually add cosinor columns to the covariate file — regenie handles this internally.
+
 #### Usage examples
 
 Generic sincos expansion of a covariate:
@@ -133,7 +139,23 @@ Generic sincos expansion of a covariate:
   --out test_nonlinear_out
 ```
 
-Full circadian cosinor using sample timestamps (UTC, Helsinki study site):
+Full circadian cosinor using sample timestamps — **Step 1**:
+```bash
+./regenie \
+  --step 1 \
+  --bed example/example \
+  --covarFile example/covariates.txt \
+  --phenoFile example/phenotype_with_timestamp.txt \
+  --bsize 1000 --lowmem --lowmem-prefix tmp_rg \
+  --qt \
+  --nonlinear \
+  --nonlinear-function cosinor \
+  --timestamp MOC_TIMEOFYEAR \
+  --timestamp-tz +03:00 \
+  --out fit_cosinor_out
+```
+
+Full circadian cosinor — **Step 2**:
 ```bash
 ./regenie \
   --step 2 \
@@ -141,24 +163,25 @@ Full circadian cosinor using sample timestamps (UTC, Helsinki study site):
   --covarFile example/covariates.txt \
   --phenoFile example/phenotype_with_timestamp.txt \
   --bsize 200 \
-  --ignore-pred \
+  --qt \
+  --pred fit_cosinor_out_pred.list \
   --nonlinear \
   --nonlinear-function cosinor \
   --timestamp MOC_TIMEOFYEAR \
   --timestamp-tz +03:00 \
-  --force-qt \
   --out test_cosinor_out
 ```
 
 Circadian cosinor anchored to local sunrise (Zeitgeber Time):
 ```bash
+# Step 1
 ./regenie \
-  --step 2 \
+  --step 1 \
   --bed example/example \
   --covarFile example/covariates.txt \
   --phenoFile example/phenotype_with_timestamp.txt \
-  --bsize 200 \
-  --ignore-pred \
+  --bsize 1000 --lowmem --lowmem-prefix tmp_rg \
+  --qt \
   --nonlinear \
   --nonlinear-function cosinor \
   --timestamp MOC_TIMEOFYEAR \
@@ -166,7 +189,24 @@ Circadian cosinor anchored to local sunrise (Zeitgeber Time):
   --sunrise-zt \
   --latitude 60.17 \
   --longitude 24.94 \
-  --force-qt \
+  --out fit_cosinor_zt_out
+
+# Step 2
+./regenie \
+  --step 2 \
+  --bed example/example \
+  --covarFile example/covariates.txt \
+  --phenoFile example/phenotype_with_timestamp.txt \
+  --bsize 200 \
+  --qt \
+  --pred fit_cosinor_zt_out_pred.list \
+  --nonlinear \
+  --nonlinear-function cosinor \
+  --timestamp MOC_TIMEOFYEAR \
+  --timestamp-tz +03:00 \
+  --sunrise-zt \
+  --latitude 60.17 \
+  --longitude 24.94 \
   --out test_cosinor_zt_out
 ```
 
@@ -241,7 +281,7 @@ make
 
 ## Quick start
 
-**Step 1** — Fit the whole genome regression model (unchanged from regenie):
+**Step 1** — Fit the whole genome regression model. For circadian interaction tests, pass the same `--nonlinear` flags here as in Step 2 so the LOCO predictions account for the time-of-day main effect:
 
 ```bash
 ./regenie \
@@ -249,34 +289,33 @@ make
   --bed example/example \
   --exclude example/snplist_rm.txt \
   --covarFile example/covariates.txt \
-  --phenoFile example/phenotype_bin.txt \
+  --phenoFile example/phenotype_with_timestamp.txt \
   --remove example/fid_iid_to_remove.txt \
-  --bsize 100 \
-  --bt --lowmem \
+  --bsize 100 --lowmem \
   --lowmem-prefix tmp_rg \
-  --out fit_bin_out
+  --qt \
+  --nonlinear \
+  --nonlinear-function tod_cosinor \
+  --timestamp MOC_TIMEOFYEAR \
+  --out fit_cosinor_out
 ```
 
-**Step 2** — Test for nonlinear interactions:
+**Step 2** — Test for circadian GxE interactions:
 
 ```bash
 ./regenie \
   --step 2 \
   --bgen example/example.bgen \
   --covarFile example/covariates.txt \
-  --phenoFile example/phenotype_bin.txt \
+  --phenoFile example/phenotype_with_timestamp.txt \
   --remove example/fid_iid_to_remove.txt \
   --bsize 200 \
-  --bt \
-  --firth --approx \
-  --pThresh 0.01 \
-  --pred fit_bin_out_pred.list \
-  --interaction V1 \
+  --qt \
+  --pred fit_cosinor_out_pred.list \
   --nonlinear \
-  --nonlinear-function sincos \
-  --nonlinear-period 24.0 \
-  --force-qt \
-  --out test_nonlinear_out
+  --nonlinear-function tod_cosinor \
+  --timestamp MOC_TIMEOFYEAR \
+  --out test_cosinor_out
 ```
 
 ## Citation
