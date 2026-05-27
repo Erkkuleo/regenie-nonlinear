@@ -176,10 +176,10 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
       get_nonlinear_names(harm_names, "", params->nonlinear_function);
       params->interaction_lvl_names = harm_names;
 
-      // Enable interaction path downstream.
-      // gwas_condtl stays true (default) so the existing w_interaction block
-      // appends interaction_cov to new_cov and registers covariate names.
-      params->w_interaction = true;
+      // Enable interaction path in Step 2 only. In Step 1, the harmonic basis
+      // is added directly to new_cov below; running extract_interaction_nonlinear()
+      // there would fail (Var=0) because interaction_cov becomes collinear with new_cov.
+      if (params->test_mode) params->w_interaction = true;
 
       sout << "   -circadian " << params->nonlinear_function << " model: "
            << harm.cols() << " interaction columns ("
